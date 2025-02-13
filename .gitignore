@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+
+# Environment variables
+.env
+
+# VS Code
+.vscode/
+
+# Scraped content
+scraped/
+
+# Playwright
+node_modules/
+
+# Extractions
+extractions/
