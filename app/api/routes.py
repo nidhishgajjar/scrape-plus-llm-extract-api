@@ -7,11 +7,13 @@ from app.services.llm_processor import LLMProcessor, ModelType
 from typing import Dict, Any
 from pydantic import BaseModel
 import os
+from app.config import get_settings
+
 router = APIRouter()
 
 @router.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"message": "Health check"}
 
 @router.get("/scrape")
 async def scrape_url(url: str):
@@ -50,7 +52,7 @@ class ExtractRequest(BaseModel):
 @router.post("/scrape/llm-extract")
 async def scrape_and_extract(request: ExtractRequest):
     try:
-
+        settings = get_settings()
         app = FirecrawlApp(api_key=os.getenv('FIRECRAWL_API_KEY'))
 
         response = app.scrape_url(url=request.url, params={
@@ -59,7 +61,11 @@ async def scrape_and_extract(request: ExtractRequest):
         
         # save the markdown to a file
         file_path = save_markdown_to_file(response['markdown'])
-        print(f"Markdown saved to {file_path}")
+        
+        if settings.DEBUG_MODE:
+            print(f"Markdown saved to {file_path}")
+        else:
+            print("File saving disabled in production mode")
         
         # Process with LLM
         llm_processor = LLMProcessor(model=request.model)
@@ -73,7 +79,9 @@ async def scrape_and_extract(request: ExtractRequest):
             "status": "success",
             "extracted_data": extracted_data,
             "extraction_file": extraction_file_path,
-            "model_used": request.model
+            "markdown_file": file_path,
+            "model_used": request.model,
+            "debug_mode": settings.DEBUG_MODE
         }
         
     except Exception as e:

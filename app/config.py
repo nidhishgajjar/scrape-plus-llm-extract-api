@@ -10,6 +10,7 @@ class Settings:
     PORT: int = 8007
     HOST: str = "0.0.0.0"
     AVAILABLE_MODELS: List[str] = ["gpt-4o", "gpt-4o-mini"]
+    DEBUG_MODE: bool = os.environ.get("DEBUG_MODE", "false").lower() == "true"
 
 @lru_cache()
 def get_settings() -> Settings:

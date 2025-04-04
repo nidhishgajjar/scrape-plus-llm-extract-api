@@ -5,6 +5,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 import json
 from urllib.parse import urlparse
 from datetime import datetime
+from app.config import get_settings
 
 ModelType = Literal["gpt-4o", "gpt-4o-mini"]
 
@@ -19,6 +20,7 @@ class LLMProcessor:
         self.json_llm = self.llm.bind(
             response_format={"type": "json_object"}
         )
+        self.settings = get_settings()
     
     async def extract_information(
         self, 
@@ -62,7 +64,11 @@ class LLMProcessor:
         
         try:
             extracted_data = json.loads(response.content)
-            file_path = self._save_extracted_data(extracted_data)
+            file_path = "File saving disabled in production mode"
+            
+            if self.settings.DEBUG_MODE:
+                file_path = self._save_extracted_data(extracted_data)
+                
             return extracted_data, file_path
         except json.JSONDecodeError:
             raise ValueError("LLM response was not valid JSON")

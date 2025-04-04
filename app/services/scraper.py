@@ -2,6 +2,7 @@ from playwright.async_api import Page
 import logging
 import os
 from datetime import datetime
+from app.config import get_settings
 
 async def scroll_to_bottom(page: Page) -> None:
     try:
@@ -22,6 +23,11 @@ async def scroll_to_bottom(page: Page) -> None:
         logging.error(f"Error during scrolling: {str(e)}")
 
 def save_markdown_to_file(markdown_content: str) -> str:
+    settings = get_settings()
+    
+    if not settings.DEBUG_MODE:
+        return "File saving disabled in production mode"
+        
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"scraped_{timestamp}.md"
     
