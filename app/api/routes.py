@@ -104,7 +104,6 @@ async def scrape_and_extract(request: ExtractRequest):
                 timeout=150  # 2.5 minute timeout for LLM processing
             )
             
-            print(f"Extracted data: {extracted_data}")
         except asyncio.TimeoutError:
             return {
                 "status": "error",
