@@ -13,9 +13,9 @@ ModelType = Literal["gpt-4o", "gpt-4o-mini"]
 
 class LLMProcessor:
     def __init__(self, model: ModelType = "gpt-4o-mini"):
-        # Create custom httpx client with timeout
+        # Create custom httpx client with timeout - use synchronous Client, not AsyncClient
         timeout = httpx.Timeout(60.0, connect=10.0)
-        http_client = httpx.AsyncClient(timeout=timeout)
+        http_client = httpx.Client(timeout=timeout)
         
         self.llm = ChatOpenAI(
             openai_api_key=os.environ.get("OPENAI_API_KEY"),
