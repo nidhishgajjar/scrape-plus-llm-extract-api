@@ -10,19 +10,17 @@ workers = multiprocessing.cpu_count() * 2 + 1
 worker_class = "uvicorn.workers.UvicornWorker"
 worker_connections = 1000
 
-# Timeout settings (more balanced values)
-timeout = 300          # Reduced from 1000 to 300 seconds (5 minutes)
-graceful_timeout = 300  # Reduced from 1000 to 300 seconds
-keepalive = 120         # Reduced from 1000 to 120 seconds
+# Disable user/group settings for containerized environments like Render
+user = None
+group = None
 
-# Performance settings
-max_requests = 1000     # Restart workers after handling this many requests
-max_requests_jitter = 200  # Add randomness to prevent all workers restarting simultaneously
+# Necessary for Render deployment
+umask = 0o000
 
-# Security settings
-umask = 0o027          # Set file creation mask
-user = "www-data"       # Run workers as this user
-group = "www-data"      # Run workers as this group
+# Timeout settings (solving worker timeout issues)
+timeout = 300          # Worker timeout increased to 5 minutes
+graceful_timeout = 120 # Grace period for workers to finish
+keepalive = 120        # Keep-alive timeout
 
 # Logging
 errorlog = "-"
