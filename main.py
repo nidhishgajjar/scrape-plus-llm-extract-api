@@ -28,5 +28,5 @@ if __name__ == "__main__":
         host=settings.HOST, 
         port=settings.PORT, 
         reload=True,
-        timeout_keep_alive=120,  # Increase keep-alive timeout
+        timeout_keep_alive=300,  # Increase keep-alive timeout
     )
