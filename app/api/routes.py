@@ -78,21 +78,11 @@ async def scrape_and_extract(request: ExtractRequest):
         settings = get_settings()
         app = FirecrawlApp(api_key=os.getenv('FIRECRAWL_API_KEY'))
 
-        # Set timeout for firecrawl request
-        try:
-            response = await asyncio.wait_for(
-                asyncio.to_thread(
-                    app.scrape_url,
-                    url=request.url,
-                    params={'formats': ['markdown']}
-                ),
-                timeout=60  # 60 second timeout
-            )
-        except asyncio.TimeoutError:
-            return {
-                "status": "error",
-                "error": "Scraping timed out after 60 seconds"
-            }
+        # Use FirecrawlApp directly - it's already designed to handle scraping efficiently
+        response = app.scrape_url(
+            url=request.url,
+            params={'formats': ['markdown']}
+        )
         
         # save the markdown to a file
         file_path = "File saving disabled in production mode"
