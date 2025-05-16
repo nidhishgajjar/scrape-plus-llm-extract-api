@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import router
 from app.config import get_settings
+import os
 
 settings = get_settings()
 
@@ -26,5 +27,6 @@ if __name__ == "__main__":
         "main:app", 
         host=settings.HOST, 
         port=settings.PORT, 
-        reload=True
+        reload=True,
+        timeout_keep_alive=120,  # Increase keep-alive timeout
     )

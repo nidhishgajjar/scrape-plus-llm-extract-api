@@ -5,16 +5,24 @@ from langchain_core.messages import SystemMessage, HumanMessage
 import json
 from urllib.parse import urlparse
 from datetime import datetime
+import httpx
+import asyncio
 from app.config import get_settings
 
 ModelType = Literal["gpt-4o", "gpt-4o-mini"]
 
 class LLMProcessor:
     def __init__(self, model: ModelType = "gpt-4o-mini"):
+        # Create custom httpx client with timeout
+        timeout = httpx.Timeout(60.0, connect=10.0)
+        http_client = httpx.AsyncClient(timeout=timeout)
+        
         self.llm = ChatOpenAI(
             openai_api_key=os.environ.get("OPENAI_API_KEY"),
             model=model,
             temperature=0,
+            request_timeout=60,  # 60 second timeout
+            http_client=http_client,
         )
         # Create JSON-mode LLM
         self.json_llm = self.llm.bind(
@@ -57,12 +65,15 @@ class LLMProcessor:
             HumanMessage(content=content)
         ]
         
-        # Use JSON-mode LLM
-        response = await self.json_llm.ainvoke(messages)
-        
-        print(response)
-        
         try:
+            # Use timeout to prevent worker hanging
+            response = await asyncio.wait_for(
+                self.json_llm.ainvoke(messages),
+                timeout=120  # 2 minute timeout
+            )
+            
+            print(response)
+            
             extracted_data = json.loads(response.content)
             file_path = "File saving disabled in production mode"
             
@@ -70,8 +81,21 @@ class LLMProcessor:
                 file_path = self._save_extracted_data(extracted_data)
                 
             return extracted_data, file_path
+            
+        except asyncio.TimeoutError:
+            # Handle timeout error
+            error_data = {"error": "LLM processing timed out after 120 seconds"}
+            return error_data, "timeout_error"
+            
         except json.JSONDecodeError:
-            raise ValueError("LLM response was not valid JSON")
+            # Handle JSON decoding error
+            error_data = {"error": "LLM response was not valid JSON"}
+            return error_data, "json_error"
+            
+        except Exception as e:
+            # Handle any other exceptions
+            error_data = {"error": f"Extraction failed: {str(e)}"}
+            return error_data, "extraction_error"
     
     def _save_extracted_data(self, data: Dict[str, Any]) -> str:
         # Create extractions directory if it doesn't exist
