@@ -1,7 +1,0 @@
-services:
-  - type: web
-    name: scrape-plus-llm-extract-api
-    runtime: python
-    plan: starter
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn -c gunicorn_conf.py main:app
