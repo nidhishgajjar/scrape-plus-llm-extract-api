@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from datetime import datetime
 import httpx
 import asyncio
+import gc
 from app.config import get_settings
 
 ModelType = Literal["gpt-4o", "gpt-4o-mini"]
@@ -72,6 +73,10 @@ class LLMProcessor:
                 timeout=120  # 2 minute timeout
             )
             
+            # Free up memory after large operations
+            messages = None
+            gc.collect()
+            
             print(response)
             
             extracted_data = json.loads(response.content)
@@ -96,6 +101,9 @@ class LLMProcessor:
             # Handle any other exceptions
             error_data = {"error": f"Extraction failed: {str(e)}"}
             return error_data, "extraction_error"
+        finally:
+            # Always try to free memory
+            gc.collect()
     
     def _save_extracted_data(self, data: Dict[str, Any]) -> str:
         # Create extractions directory if it doesn't exist
