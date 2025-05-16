@@ -10,13 +10,6 @@ workers = multiprocessing.cpu_count() * 2 + 1
 worker_class = "uvicorn.workers.UvicornWorker"
 worker_connections = 1000
 
-# Disable user/group settings for containerized environments like Render
-user = None
-group = None
-
-# Necessary for Render deployment
-umask = 0o000
-
 # Timeout settings (solving worker timeout issues)
 timeout = 300          # Worker timeout increased to 5 minutes
 graceful_timeout = 120 # Grace period for workers to finish
@@ -32,4 +25,4 @@ access_log_format = "%({X-Real-IP}i)s %(h)s %(l)s %(u)s %(t)s \"%(r)s\" %(s)s %(
 proc_name = "scrape-plus-llm-extract-api"
 
 # Server mechanics
-daemon = False
+daemon = False 
