@@ -21,7 +21,7 @@ async def root():
 async def scrape_url(url: str):
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=False)
+            browser = await p.chromium.launch(headless=True)
             page = await browser.new_page(viewport={"width": 1280, "height": 720})
             
             try:
@@ -81,7 +81,7 @@ async def scrape_and_extract(request: ExtractRequest):
         if request.use_inhouse_scraping:
             # Use in-house Playwright scrolling approach
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=False)
+                browser = await p.chromium.launch(headless=True)
                 page = await browser.new_page(viewport={"width": 1280, "height": 720})
                 
                 try:
