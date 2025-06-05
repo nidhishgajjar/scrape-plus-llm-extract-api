@@ -10,26 +10,50 @@ import asyncio
 import gc
 from app.config import get_settings
 
-ModelType = Literal["gpt-4o", "gpt-4o-mini"]
+try:
+    from google import genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
+
+ModelType = Literal["gpt-4o", "gpt-4o-mini", "gemini-2.0-flash-exp"]
 
 class LLMProcessor:
     def __init__(self, model: ModelType = "gpt-4o-mini"):
-        # Create custom httpx client with timeout - use synchronous Client, not AsyncClient
-        timeout = httpx.Timeout(60.0, connect=10.0)
-        http_client = httpx.Client(timeout=timeout)
-        
-        self.llm = ChatOpenAI(
-            openai_api_key=os.environ.get("OPENAI_API_KEY"),
-            model=model,
-            temperature=0,
-            request_timeout=60,  # 60 second timeout
-            http_client=http_client,
-        )
-        # Create JSON-mode LLM
-        self.json_llm = self.llm.bind(
-            response_format={"type": "json_object"}
-        )
+        self.model = model
         self.settings = get_settings()
+        
+        # Determine if this is a Gemini or OpenAI model
+        if model.startswith("gemini"):
+            if not GEMINI_AVAILABLE:
+                raise ImportError("google-genai package not installed. Run: pip install google-genai")
+            
+            api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+            if not api_key:
+                raise ValueError("GOOGLE_API_KEY or GEMINI_API_KEY environment variable required for Gemini models")
+            
+            self.client_type = "gemini"
+            self.gemini_client = genai.Client(api_key=api_key)
+            self.llm = None
+            self.json_llm = None
+        else:
+            # OpenAI models
+            timeout = httpx.Timeout(60.0, connect=10.0)
+            http_client = httpx.Client(timeout=timeout)
+            
+            self.client_type = "openai"
+            self.gemini_client = None
+            self.llm = ChatOpenAI(
+                openai_api_key=os.environ.get("OPENAI_API_KEY"),
+                model=model,
+                temperature=0,
+                request_timeout=60,  # 60 second timeout
+                http_client=http_client,
+            )
+            # Create JSON-mode LLM
+            self.json_llm = self.llm.bind(
+                response_format={"type": "json_object"}
+            )
     
     async def extract_information(
         self, 
@@ -61,25 +85,55 @@ class LLMProcessor:
           * Validate URLs match the specified criteria
         """
         
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=content)
-        ]
-        
         try:
-            # Use timeout to prevent worker hanging
-            response = await asyncio.wait_for(
-                self.json_llm.ainvoke(messages),
-                timeout=120  # 2 minute timeout
-            )
+            if self.client_type == "gemini":
+                # Use Gemini API
+                prompt = f"{system_prompt}\n\nContent to analyze:\n{content}"
+                
+                response = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: self.gemini_client.models.generate_content(
+                            model=self.model,
+                            contents=prompt
+                        )
+                    ),
+                    timeout=120  # 2 minute timeout
+                )
+                
+                response_text = response.text
+            else:
+                # Use OpenAI API via LangChain
+                messages = [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=content)
+                ]
+                
+                response = await asyncio.wait_for(
+                    self.json_llm.ainvoke(messages),
+                    timeout=120  # 2 minute timeout
+                )
+                
+                response_text = response.content
+                messages = None  # Free memory
             
             # Free up memory after large operations
-            messages = None
             gc.collect()
             
-            print(response)
+            print(f"LLM Response: {response_text}")
             
-            extracted_data = json.loads(response.content)
+            # Try to parse JSON response
+            try:
+                extracted_data = json.loads(response_text)
+            except json.JSONDecodeError:
+                # If direct parsing fails, try to extract JSON from response
+                import re
+                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                if json_match:
+                    extracted_data = json.loads(json_match.group())
+                else:
+                    raise json.JSONDecodeError("No valid JSON found in response", response_text, 0)
+            
             file_path = "File saving disabled in production mode"
             
             if self.settings.DEBUG_MODE:
@@ -92,9 +146,9 @@ class LLMProcessor:
             error_data = {"error": "LLM processing timed out after 120 seconds"}
             return error_data, "timeout_error"
             
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             # Handle JSON decoding error
-            error_data = {"error": "LLM response was not valid JSON"}
+            error_data = {"error": f"LLM response was not valid JSON: {str(e)}"}
             return error_data, "json_error"
             
         except Exception as e:

@@ -71,3 +71,4 @@ uvicorn==0.34.0
 websockets==13.1
 wheel==0.44.0
 yarl==1.18.3
+google-genai
