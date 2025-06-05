@@ -125,7 +125,7 @@ async def scrape_and_extract(request: ExtractRequest):
                     await page.goto(request.url, timeout=30000)  # 30 second timeout
                     
                     # # Small delay to appear more human-like
-                    # await page.wait_for_timeout(000)  # 2 second delay
+                    # await page.wait_for_timeout(2000)  # 2 second delay
                     
                     # # Scroll with timeout
                     # await asyncio.wait_for(
