@@ -25,18 +25,7 @@ async def health():
 async def scrape_url(url: str):
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(
-                headless=True,
-                args=[
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-gpu',
-                    '--disable-extensions',
-                    '--disable-web-security',
-                    '--single-process'
-                ]
-            )
+            browser = await p.chromium.launch(headless=True)
             page = await browser.new_page(
                 viewport={"width": 1280, "height": 720}
             )
@@ -102,20 +91,12 @@ async def scrape_and_extract(request: ExtractRequest):
                     headless=True,
                     args=[
                         '--no-sandbox',
-                        '--disable-setuid-sandbox',
                         '--disable-blink-features=AutomationControlled',
                         '--disable-dev-shm-usage',
                         '--disable-gpu',
-                        '--disable-background-timer-throttling',
-                        '--disable-renderer-backgrounding',
-                        '--disable-features=TranslateUI',
-                        '--disable-ipc-flooding-protection',
                         '--no-first-run',
                         '--no-default-browser-check',
-                        '--disable-extensions',
-                        '--disable-web-security',
-                        '--disable-features=VizDisplayCompositor',
-                        '--single-process'
+                        '--disable-extensions'
                     ]
                 )
                 page = await browser.new_page(
