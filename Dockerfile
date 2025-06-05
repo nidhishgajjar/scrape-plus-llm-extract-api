@@ -15,6 +15,9 @@ RUN apt-get update && apt-get install -y \
     libxkbcommon0 \
     libasound2 \
     libatspi2.0-0 \
+    libcups2 \
+    libpango-1.0-0 \
+    libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -27,11 +30,3 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install Playwright browsers
 RUN playwright install chromium
 
-# Copy application code
-COPY . .
-
-# Expose port
-EXPOSE 8080
-
-# Run the application
-CMD ["gunicorn", "main:app", "-c", "gunicorn_conf.py"] 
