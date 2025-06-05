@@ -23,7 +23,7 @@ def get_workers_count():
 
 # Server socket settings  
 # Use PORT environment variable or default to 8080 for DigitalOcean
-port = os.environ.get("PORT", "8080")
+port = os.environ.get("PORT", "10000")
 bind = f"0.0.0.0:{port}"
 backlog = 2048
 

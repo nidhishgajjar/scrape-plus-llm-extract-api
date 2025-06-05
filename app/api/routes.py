@@ -26,7 +26,11 @@ async def scrape_url(url: str):
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page(viewport={"width": 1280, "height": 720})
+            page = await browser.new_page(
+                viewport={"width": 1280, "height": 720},
+                locale='en-CA',  # Canadian locale
+                timezone_id='America/Toronto'  # Toronto timezone
+            )
             
             try:
                 # Set a page navigation timeout
@@ -86,7 +90,11 @@ async def scrape_and_extract(request: ExtractRequest):
             # Use in-house Playwright scrolling approach
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
-                page = await browser.new_page(viewport={"width": 1280, "height": 720})
+                page = await browser.new_page(
+                    viewport={"width": 1280, "height": 720},
+                    locale='en-CA',  # Canadian locale
+                    timezone_id='America/Toronto'  # Toronto timezone
+                )
                 
                 try:
                     # Set a page navigation timeout
