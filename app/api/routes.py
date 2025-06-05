@@ -21,12 +21,12 @@ async def root():
 async def scrape_url(url: str):
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(headless=False)
             page = await browser.new_page(viewport={"width": 1280, "height": 720})
             
             try:
                 # Set a page navigation timeout
-                await page.goto(url, timeout=30000)  # 30 second timeout
+                await page.goto(url, timeout=5000)  # 5 second timeout
                 
                 # Scroll with timeout
                 await asyncio.wait_for(
@@ -71,23 +71,57 @@ class ExtractRequest(BaseModel):
     extraction_prompt: str
     output_format: Dict[str, Any]
     model: ModelType = "gpt-4o-mini"
+    use_inhouse_scraping: bool = False
 
 @router.post("/scrape/llm-extract")
 async def scrape_and_extract(request: ExtractRequest):
     try:
         settings = get_settings()
-        app = FirecrawlApp(api_key=os.getenv('FIRECRAWL_API_KEY'))
+        
+        if request.use_inhouse_scraping:
+            # Use in-house Playwright scrolling approach
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page(viewport={"width": 1280, "height": 720})
+                
+                try:
+                    # Set a page navigation timeout
+                    await page.goto(request.url, timeout=30000)  # 30 second timeout
+                    
+                    # Scroll with timeout
+                    await asyncio.wait_for(
+                        scroll_to_bottom(page),
+                        timeout=15  # 15 second timeout for scrolling
+                    )
+                    
+                    html_content = await page.content()
+                except PlaywrightTimeout:
+                    await browser.close()
+                    return {
+                        "status": "error",
+                        "error": "Page loading timed out",
+                        "partial_content": await page.content() if page else None
+                    }
+                finally:
+                    await browser.close()
 
-        # Use FirecrawlApp directly - it's already designed to handle scraping efficiently
-        response = app.scrape_url(
-            url=request.url,
-            params={'formats': ['markdown']}
-        )
+            markdown_content = await convert_html_to_markdown(html_content)
+            
+            if markdown_content is None:
+                raise HTTPException(status_code=500, detail="Failed to convert HTML to markdown")
+        else:
+            # Use Firecrawl approach
+            app = FirecrawlApp(api_key=os.getenv('FIRECRAWL_API_KEY'))
+            response = app.scrape_url(
+                url=request.url,
+                params={'formats': ['markdown']}
+            )
+            markdown_content = response['markdown']
         
         # save the markdown to a file
         file_path = "File saving disabled in production mode"
         if settings.DEBUG_MODE:
-            file_path = save_markdown_to_file(response['markdown'])
+            file_path = save_markdown_to_file(markdown_content)
             print(f"Markdown saved to {file_path}")
         else:
             print("File saving disabled in production mode")
@@ -97,7 +131,7 @@ async def scrape_and_extract(request: ExtractRequest):
         try:
             extracted_data, extraction_file_path = await asyncio.wait_for(
                 llm_processor.extract_information(
-                    content=response['markdown'],
+                    content=markdown_content,
                     extraction_prompt=request.extraction_prompt,
                     output_format=request.output_format
                 ),
@@ -108,7 +142,8 @@ async def scrape_and_extract(request: ExtractRequest):
             return {
                 "status": "error",
                 "error": "LLM processing timed out after 150 seconds",
-                "markdown_file": file_path
+                "markdown_file": file_path,
+                "scraping_method": "inhouse_playwright" if request.use_inhouse_scraping else "firecrawl"
             }
         
         return {
@@ -117,6 +152,7 @@ async def scrape_and_extract(request: ExtractRequest):
             "extraction_file": extraction_file_path,
             "markdown_file": file_path,
             "model_used": request.model,
+            "scraping_method": "inhouse_playwright" if request.use_inhouse_scraping else "firecrawl",
             "debug_mode": settings.DEBUG_MODE
         }
     except httpx.RequestError as e:
