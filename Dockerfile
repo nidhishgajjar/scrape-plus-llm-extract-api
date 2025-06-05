@@ -2,6 +2,8 @@ FROM python:3.11-slim
 
 # Install system dependencies for Playwright
 RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
     libnss3 \
     libnspr4 \
     libatk1.0-0 \
@@ -18,7 +20,17 @@ RUN apt-get update && apt-get install -y \
     libcups2 \
     libpango-1.0-0 \
     libcairo2 \
+    libgdk-pixbuf2.0-0 \
+    libgtk-3-0 \
+    libx11-xcb1 \
+    libxcb-dri3-0 \
+    libxtst6 \
+    libxss1 \
+    libasound2-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Set environment variables for Playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/render/.cache/ms-playwright
 
 # Set working directory
 WORKDIR /app
@@ -27,8 +39,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers
-RUN playwright install chromium
+# Install Playwright browsers with system dependencies
+RUN playwright install chromium --with-deps
+
+# Verify browser installation
+RUN playwright install-deps chromium
 
 # Copy application code
 COPY . .
