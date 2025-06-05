@@ -27,9 +27,7 @@ async def scrape_url(url: str):
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page(
-                viewport={"width": 1280, "height": 720},
-                locale='en-CA',  # Canadian locale
-                timezone_id='America/Toronto'  # Toronto timezone
+                viewport={"width": 1280, "height": 720}
             )
             
             try:
@@ -89,16 +87,45 @@ async def scrape_and_extract(request: ExtractRequest):
         if request.use_inhouse_scraping:
             # Use in-house Playwright scrolling approach
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=[
+                        '--no-sandbox',
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-dev-shm-usage',
+                        '--disable-gpu',
+                        '--no-first-run',
+                        '--no-default-browser-check',
+                        '--disable-extensions'
+                    ]
+                )
                 page = await browser.new_page(
                     viewport={"width": 1280, "height": 720},
-                    locale='en-CA',  # Canadian locale
-                    timezone_id='America/Toronto'  # Toronto timezone
+                    locale='en-CA',
+                    timezone_id='America/Toronto',
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 )
+                
+                # Hide automation indicators
+                await page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined,
+                    });
+                """)
+                
+                # Set realistic headers
+                await page.set_extra_http_headers({
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-CA,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br'
+                })
                 
                 try:
                     # Set a page navigation timeout
                     await page.goto(request.url, timeout=30000)  # 30 second timeout
+                    
+                    # Small delay to appear more human-like
+                    await page.wait_for_timeout(2000)  # 2 second delay
                     
                     # Scroll with timeout
                     await asyncio.wait_for(
