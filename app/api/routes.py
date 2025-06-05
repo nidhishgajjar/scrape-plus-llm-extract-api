@@ -88,7 +88,7 @@ async def scrape_and_extract(request: ExtractRequest):
             # Use in-house Playwright scrolling approach
             async with async_playwright() as p:
                 browser = await p.chromium.launch(
-                    headless=True,
+                    headless=False,
                     args=[
                         '--no-sandbox',
                         '--disable-blink-features=AutomationControlled',
@@ -121,17 +121,17 @@ async def scrape_and_extract(request: ExtractRequest):
                 })
                 
                 try:
-                    # Set a page navigation timeout
+                    # # Set a page navigation timeout
                     await page.goto(request.url, timeout=30000)  # 30 second timeout
                     
-                    # Small delay to appear more human-like
-                    await page.wait_for_timeout(2000)  # 2 second delay
+                    # # Small delay to appear more human-like
+                    # await page.wait_for_timeout(000)  # 2 second delay
                     
-                    # Scroll with timeout
-                    await asyncio.wait_for(
-                        scroll_to_bottom(page),
-                        timeout=15  # 15 second timeout for scrolling
-                    )
+                    # # Scroll with timeout
+                    # await asyncio.wait_for(
+                    #     scroll_to_bottom(page),
+                    #     timeout=15  # 15 second timeout for scrolling
+                    # )
                     
                     html_content = await page.content()
                 except PlaywrightTimeout:
