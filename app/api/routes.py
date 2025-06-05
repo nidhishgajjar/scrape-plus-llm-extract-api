@@ -15,7 +15,11 @@ router = APIRouter()
 
 @router.get("/")
 async def root():
-    return {"message": "Health check"}
+    return {"message": "Health check", "status": "ok"}
+
+@router.get("/health")
+async def health():
+    return {"status": "healthy", "message": "Service is running"}
 
 @router.get("/scrape")
 async def scrape_url(url: str):
