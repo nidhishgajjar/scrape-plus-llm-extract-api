@@ -88,7 +88,7 @@ async def scrape_and_extract(request: ExtractRequest):
             # Use in-house Playwright scrolling approach
             async with async_playwright() as p:
                 browser = await p.chromium.launch(
-                    headless=False,
+                    headless=True,
                     args=[
                         '--no-sandbox',
                         '--disable-blink-features=AutomationControlled',
