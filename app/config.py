@@ -9,7 +9,7 @@ class Settings:
     BACKEND_CORS_ORIGINS: list = ["*"]
     PORT: int = 8007
     HOST: str = "0.0.0.0"
-    AVAILABLE_MODELS: List[str] = ["gpt-4o", "gpt-4o-mini", "gemini-2.0-flash-exp"]
+    AVAILABLE_MODELS: List[str] = ["gpt-4o", "gpt-4o-mini", "gemini-2.0-flash-exp", "gemini-2.5-pro-preview-06-05"]
     DEBUG_MODE: bool = os.environ.get("DEBUG_MODE", "false").lower() == "true"
 
 @lru_cache()
