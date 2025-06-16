@@ -78,6 +78,7 @@ class ExtractRequest(BaseModel):
     output_format: Dict[str, Any]
     model: ModelType = "gpt-4o-mini"
     use_inhouse_scraping: bool = False
+    enable_scroll: bool = False
 
 @router.post("/scrape/llm-extract")
 async def scrape_and_extract(request: ExtractRequest):
@@ -88,7 +89,7 @@ async def scrape_and_extract(request: ExtractRequest):
             # Use in-house Playwright scrolling approach
             async with async_playwright() as p:
                 browser = await p.chromium.launch(
-                    headless=True,
+                    headless=False,
                     args=[
                         '--no-sandbox',
                         '--disable-blink-features=AutomationControlled',
@@ -121,17 +122,18 @@ async def scrape_and_extract(request: ExtractRequest):
                 })
                 
                 try:
-                    # # Set a page navigation timeout
+                    # Set a page navigation timeout
                     await page.goto(request.url, timeout=30000)  # 30 second timeout
                     
-                    # # Small delay to appear more human-like
+                    # Small delay to appear more human-like
                     await page.wait_for_timeout(3000)  # 3 second delay
                     
-                    # # Scroll with timeout
-                    # await asyncio.wait_for(
-                    #     scroll_to_bottom(page),
-                    #     timeout=15  # 15 second timeout for scrolling
-                    # )
+                    # Scroll to bottom if enabled
+                    if request.enable_scroll:
+                        await asyncio.wait_for(
+                            scroll_to_bottom(page),
+                            timeout=300  # 5 minute timeout for scrolling
+                        )
                     
                     html_content = await page.content()
                 except PlaywrightTimeout:
