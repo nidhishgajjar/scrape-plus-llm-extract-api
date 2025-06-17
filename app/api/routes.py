@@ -82,6 +82,16 @@ class ExtractRequest(BaseModel):
 @router.post("/scrape/llm-extract")
 async def scrape_and_extract(request: ExtractRequest):
     try:
+        print(f"Request: {request}")
+        print(f"Request.model: {request.model}")
+        print(f"Request.use_inhouse_scraping: {request.use_inhouse_scraping}")
+        print(f"Request.output_format: {request.output_format}")
+        print(f"Request.extraction_prompt: {request.extraction_prompt}")
+        print(f"Request.url: {request.url}")
+        print(f"Request.model: {request.model}")
+        print(f"Request.use_inhouse_scraping: {request.use_inhouse_scraping}")
+        print(f"Request.output_format: {request.output_format}")
+        print(f"GEMINI_API_KEY: {os.getenv('GEMINI_API_KEY')}")
         settings = get_settings()
         
         if request.use_inhouse_scraping:
