@@ -29,6 +29,8 @@ class LLMProcessor:
                 raise ImportError("google-genai package not installed. Run: pip install google-genai")
             
             api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+            
+            print(f"API Key: {api_key}")
             if not api_key:
                 raise ValueError("GOOGLE_API_KEY or GEMINI_API_KEY environment variable required for Gemini models")
             
