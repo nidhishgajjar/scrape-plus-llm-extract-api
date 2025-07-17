@@ -99,7 +99,8 @@ class LLMProcessor:
                             model=self.model,
                             contents=prompt,
                             config=types.GenerateContentConfig(
-                                max_output_tokens=65000
+                                max_output_tokens=65000,
+                                temperature=0.0,
                             )
                         )
                     ),
