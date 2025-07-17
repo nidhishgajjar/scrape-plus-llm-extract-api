@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""
+Test script to verify litellm integration for both OpenAI and Gemini models
+"""
+import asyncio
+import os
+from app.services.llm_processor import LLMProcessor
+
+async def test_model(model_name: str):
+    """Test a specific model"""
+    print(f"\n{'='*50}")
+    print(f"Testing {model_name}")
+    print(f"{'='*50}")
+    
+    try:
+        processor = LLMProcessor(model=model_name)
+        
+        # Test content about AI
+        content = """
+        Artificial Intelligence (AI) is revolutionizing various industries. Machine learning algorithms 
+        can now process vast amounts of data to identify patterns and make predictions. Deep learning, 
+        a subset of machine learning, uses neural networks to solve complex problems. Natural language 
+        processing enables computers to understand and generate human language. Computer vision allows 
+        machines to interpret visual information. These technologies are being applied in healthcare 
+        for diagnostic imaging, in finance for fraud detection, and in transportation for autonomous 
+        vehicles. The future of AI promises even more advanced capabilities with the development of 
+        artificial general intelligence (AGI).
+        """
+        
+        extraction_prompt = """
+        Extract key information about AI technologies and applications mentioned in the text.
+        Focus on technologies, applications, and industries mentioned.
+        """
+        
+        output_format = {
+            "technologies": ["string"],
+            "applications": ["string"],
+            "industries": ["string"],
+            "future_developments": ["string"]
+        }
+        
+        print(f"Max tokens configured: {processor._get_max_tokens()}")
+        print("Processing request...")
+        
+        result, file_path = await processor.extract_information(
+            content=content,
+            extraction_prompt=extraction_prompt,
+            output_format=output_format
+        )
+        
+        if "error" in result:
+            print(f"❌ Error: {result['error']}")
+            return False
+        
+        print("✅ Success!")
+        print(f"Technologies found: {len(result.get('technologies', []))}")
+        print(f"Applications found: {len(result.get('applications', []))}")
+        print(f"Industries found: {len(result.get('industries', []))}")
+        
+        # Print first few items from each category
+        for key, items in result.items():
+            if isinstance(items, list) and items:
+                print(f"{key.title()}: {items[:3]}{'...' if len(items) > 3 else ''}")
+        
+        if file_path != "File saving disabled in production mode":
+            print(f"Result saved to: {file_path}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Test failed: {str(e)}")
+        return False
+
+async def main():
+    print("Testing LiteLLM Integration")
+    print("=" * 50)
+    
+    # Test models
+    models_to_test = []
+    
+    # Check which models we can test based on available API keys
+    if os.getenv("OPENAI_API_KEY"):
+        models_to_test.extend(["gpt-4o-mini", "gpt-4o"])
+    
+    if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
+        models_to_test.extend(["gemini/gemini-2.5-flash", "gemini/gemini-2.5-pro"])
+    
+    if not models_to_test:
+        print("❌ No API keys found. Please set OPENAI_API_KEY or GEMINI_API_KEY")
+        return
+    
+    print(f"Testing {len(models_to_test)} models: {', '.join(models_to_test)}")
+    
+    results = {}
+    for model in models_to_test:
+        results[model] = await test_model(model)
+    
+    # Summary
+    print(f"\n{'='*50}")
+    print("Test Summary")
+    print(f"{'='*50}")
+    
+    for model, success in results.items():
+        status = "✅ PASSED" if success else "❌ FAILED"
+        print(f"{model:20} {status}")
+    
+    total_passed = sum(results.values())
+    total_tests = len(results)
+    print(f"\nOverall: {total_passed}/{total_tests} tests passed")
+
+if __name__ == "__main__":
+    asyncio.run(main())

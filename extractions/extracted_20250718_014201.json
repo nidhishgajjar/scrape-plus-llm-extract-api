@@ -1,0 +1,35 @@
+{
+  "summary": "Artificial Intelligence (AI) is a rapidly evolving field encompassing machine learning, deep learning, natural language processing, computer vision, and robotics. Its history dates back to the 1950s with Alan Turing's Turing Test, progressing through neural networks and expert systems in the 1980s to modern transformer models like GPT and BERT.",
+  "details": "The history of AI dates back to the 1950s when Alan Turing proposed the Turing Test. Major breakthroughs include the development of neural networks, the creation of expert systems in the 1980s, and recent advances in transformer models such as GPT and BERT. Key applications of AI span healthcare diagnostics, autonomous vehicles, recommendation systems, fraud detection, and creative content generation. Leading companies in AI research include Google, OpenAI, Microsoft, and Meta. Notable researchers in the field are Geoffrey Hinton, Yann LeCun, Andrew Ng, Demis Hassabis, and Fei-Fei Li. Current trends involve large language models, multimodal AI, reinforcement learning, and edge AI deployment. The future of AI is expected to see advancements in artificial general intelligence (AGI), quantum computing integration, and human-AI collaboration. Ethical considerations associated with AI include bias in algorithms, job displacement, privacy concerns, and the potential for misuse. Important conferences for AI research include NeurIPS, ICML, ICLR, and AAAI. The field continues to grow with new architectures, training techniques, and applications emerging regularly.",
+  "characters": [
+    "Alan Turing",
+    "Geoffrey Hinton",
+    "Yann LeCun",
+    "Andrew Ng",
+    "Demis Hassabis",
+    "Fei-Fei Li"
+  ],
+  "themes": [
+    "Machine Learning",
+    "Deep Learning",
+    "Natural Language Processing",
+    "Computer Vision",
+    "Robotics",
+    "Healthcare Diagnostics",
+    "Autonomous Vehicles",
+    "Recommendation Systems",
+    "Fraud Detection",
+    "Creative Content Generation",
+    "Large Language Models",
+    "Multimodal AI",
+    "Reinforcement Learning",
+    "Edge AI Deployment",
+    "Artificial General Intelligence (AGI)",
+    "Quantum Computing Integration",
+    "Human-AI Collaboration",
+    "Bias in Algorithms",
+    "Job Displacement",
+    "Privacy Concerns",
+    "Misuse of AI"
+  ]
+}

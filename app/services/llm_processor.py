@@ -1,61 +1,38 @@
 import os
 from typing import Any, Dict, Literal, Tuple
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
 import json
-from urllib.parse import urlparse
 from datetime import datetime
-import httpx
 import asyncio
 import gc
 from app.config import get_settings
+import litellm
 
-try:
-    from google import genai
-    from google.genai import types
-    GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
-
-ModelType = Literal["gpt-4o", "gpt-4o-mini", "gemini-2.5-flash", "gemini-2.5-pro"]
+ModelType = Literal["gpt-4o", "gpt-4o-mini", "gemini/gemini-2.5-flash", "gemini/gemini-2.5-pro"]
 
 class LLMProcessor:
     def __init__(self, model: ModelType = "gpt-4o-mini"):
         self.model = model
         self.settings = get_settings()
         
-        # Determine if this is a Gemini or OpenAI model
+        # Set up environment variables for litellm
         if model.startswith("gemini"):
-            if not GEMINI_AVAILABLE:
-                raise ImportError("google-genai package not installed. Run: pip install google-genai")
-            
-            api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
-            
+            api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
             if not api_key:
-                raise ValueError("GOOGLE_API_KEY or GEMINI_API_KEY environment variable required for Gemini models")
-            
-            self.client_type = "gemini"
-            self.gemini_client = genai.Client(api_key=api_key)
-            self.llm = None
-            self.json_llm = None
+                raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY environment variable required for Gemini models")
+            os.environ["GEMINI_API_KEY"] = api_key
         else:
             # OpenAI models
-            timeout = httpx.Timeout(60.0, connect=10.0)
-            http_client = httpx.Client(timeout=timeout)
-            
-            self.client_type = "openai"
-            self.gemini_client = None
-            self.llm = ChatOpenAI(
-                openai_api_key=os.environ.get("OPENAI_API_KEY"),
-                model=model,
-                temperature=0,
-                request_timeout=60,  # 60 second timeout
-                http_client=http_client,
-            )
-            # Create JSON-mode LLM
-            self.json_llm = self.llm.bind(
-                response_format={"type": "json_object"}
-            )
+            if not os.environ.get("OPENAI_API_KEY"):
+                raise ValueError("OPENAI_API_KEY environment variable required for OpenAI models")
+    
+    def _get_max_tokens(self) -> int:
+        """Get appropriate max tokens based on model"""
+        if self.model.startswith("gemini"):
+            return 65535  # Gemini models (both pro and flash)
+        elif self.model == "gpt-4o-mini":
+            return 16384  # GPT-4o mini
+        else:
+            return 4096  # GPT-4o and other OpenAI models
     
     async def extract_information(
         self, 
@@ -88,40 +65,22 @@ class LLMProcessor:
         """
         
         try:
-            if self.client_type == "gemini":
-                # Use Gemini API
-                prompt = f"{system_prompt}\n\nContent to analyze:\n{content}"
-                
-                response = await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: self.gemini_client.models.generate_content(
-                            model=self.model,
-                            contents=prompt,
-                            config=types.GenerateContentConfig(
-                                max_output_tokens=65000,
-                                temperature=0.0,
-                            )
-                        )
-                    ),
-                    timeout=300  # 5 minute timeout
-                )
-                
-                response_text = response.text
-            else:
-                # Use OpenAI API via LangChain
-                messages = [
-                    SystemMessage(content=system_prompt),
-                    HumanMessage(content=content)
-                ]
-                
-                response = await asyncio.wait_for(
-                    self.json_llm.ainvoke(messages),
-                    timeout=120  # 2 minute timeout
-                )
-                
-                response_text = response.content
-                messages = None  # Free memory
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": content}
+            ]
+            
+            # Use litellm acompletion
+            response = await litellm.acompletion(
+                model=self.model,
+                messages=messages,
+                temperature=0,
+                max_tokens=self._get_max_tokens(),
+                timeout=300,  # 5 minute timeout
+                response_format={"type": "json_object"} if not self.model.startswith("gemini") else None
+            )
+            
+            response_text = response.choices[0].message.content
             
             # Free up memory after large operations
             gc.collect()
@@ -149,7 +108,7 @@ class LLMProcessor:
             
         except asyncio.TimeoutError:
             # Handle timeout error
-            error_data = {"error": "LLM processing timed out after 120 seconds"}
+            error_data = {"error": "LLM processing timed out after 300 seconds"}
             return error_data, "timeout_error"
             
         except json.JSONDecodeError as e:
@@ -178,4 +137,4 @@ class LLMProcessor:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         
-        return file_path 
+        return file_path
