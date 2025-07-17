@@ -12,6 +12,7 @@ from app.config import get_settings
 
 try:
     from google import genai
+    from google.genai import types
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
@@ -97,7 +98,7 @@ class LLMProcessor:
                         lambda: self.gemini_client.models.generate_content(
                             model=self.model,
                             contents=prompt,
-                            config=genai.GenerateContentConfig(
+                            config=types.GenerateContentConfig(
                                 max_output_tokens=65000
                             )
                         )
