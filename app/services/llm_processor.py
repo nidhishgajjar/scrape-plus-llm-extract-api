@@ -17,7 +17,7 @@ try:
 except ImportError:
     GEMINI_AVAILABLE = False
 
-ModelType = Literal["gpt-4o", "gpt-4o-mini", "gemini-2.0-flash-exp", "gemini-2.5-pro-preview-06-05"]
+ModelType = Literal["gpt-4o", "gpt-4o-mini", "gemini-2.5-flash", "gemini-2.5-pro"]
 
 class LLMProcessor:
     def __init__(self, model: ModelType = "gpt-4o-mini"):
