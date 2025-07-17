@@ -1,0 +1,18 @@
+{
+  "top_stories": [
+    {
+      "title": "Honda conducts successful launch and landing of experimental reusable rocket",
+      "url": "https://global.honda/en/topics/2025/c_2025-06-17ceng.html"
+    },
+    {
+      "title": "The Grug Brained Developer (2022)",
+      "url": "https://grugbrain.dev/"
+    },
+    {
+      "title": "Resurrecting a dead torrent tracker and finding 3M peers",
+      "url": "https://kianbradley.com/2025/06/15/resurrecting-a-dead-tracker.html"
+    }
+  ],
+  "total_stories_found": 3,
+  "extraction_notes": "Successfully extracted the top 3 story titles and their corresponding URLs from the provided Hacker News content."
+}

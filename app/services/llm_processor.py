@@ -96,7 +96,10 @@ class LLMProcessor:
                         None,
                         lambda: self.gemini_client.models.generate_content(
                             model=self.model,
-                            contents=prompt
+                            contents=prompt,
+                            config=genai.GenerateContentConfig(
+                                max_output_tokens=65000
+                            )
                         )
                     ),
                     timeout=120  # 2 minute timeout

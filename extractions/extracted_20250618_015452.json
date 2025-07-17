@@ -1,0 +1,21 @@
+{
+  "top_stories": [
+    {
+      "title": "Honda conducts successful launch and landing of experimental reusable rocket",
+      "url": "https://global.honda/en/topics/2025/c_2025-06-17ceng.html",
+      "score": "576 points"
+    },
+    {
+      "title": "Resurrecting a dead torrent tracker and finding 3M peers",
+      "url": "https://kianbradley.com/2025/06/15/resurrecting-a-dead-tracker.html",
+      "score": "171 points"
+    },
+    {
+      "title": "Building Effective AI Agents",
+      "url": "https://www.anthropic.com/engineering/building-effective-agents",
+      "score": "82 points"
+    }
+  ],
+  "total_stories_found": 3,
+  "extraction_notes": "Successfully extracted the top 3 stories from the provided Hacker News content."
+}

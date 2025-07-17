@@ -1,0 +1,21 @@
+{
+  "top_stories": [
+    {
+      "title": "Honda conducts successful launch and landing of experimental reusable rocket",
+      "url": "https://global.honda/en/topics/2025/c_2025-06-17ceng.html",
+      "score": "615 points"
+    },
+    {
+      "title": "The Grug Brained Developer",
+      "url": "https://grugbrain.dev/",
+      "score": "36 points"
+    },
+    {
+      "title": "Resurrecting a dead torrent tracker and finding 3M peers",
+      "url": "https://kianbradley.com/2025/06/15/resurrecting-a-dead-tracker.html",
+      "score": "204 points"
+    }
+  ],
+  "total_stories_found": 3,
+  "extraction_notes": "Successfully extracted the top 3 stories based on their numerical ranking in the provided content."
+}
