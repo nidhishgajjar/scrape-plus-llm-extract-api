@@ -14,3 +14,6 @@ dist/
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
+
+extracted_data/
+scraped_data/
