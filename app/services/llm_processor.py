@@ -7,7 +7,7 @@ import gc
 from app.config import get_settings
 import litellm
 
-ModelType = Literal["gpt-4o", "gpt-4o-mini", "gemini/gemini-2.5-flash", "gemini/gemini-2.5-pro"]
+ModelType = Literal["gpt-4o", "gpt-4o-mini", "gemini-2.5-flash", "gemini-2.5-pro"]
 
 class LLMProcessor:
     def __init__(self, model: ModelType = "gpt-4o-mini"):
@@ -20,10 +20,13 @@ class LLMProcessor:
             if not api_key:
                 raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY environment variable required for Gemini models")
             os.environ["GEMINI_API_KEY"] = api_key
+            # Convert to litellm format
+            self.litellm_model = f"gemini/{model}"
         else:
             # OpenAI models
             if not os.environ.get("OPENAI_API_KEY"):
                 raise ValueError("OPENAI_API_KEY environment variable required for OpenAI models")
+            self.litellm_model = model
     
     def _get_max_tokens(self) -> int:
         """Get appropriate max tokens based on model"""
@@ -72,7 +75,7 @@ class LLMProcessor:
             
             # Use litellm acompletion
             response = await litellm.acompletion(
-                model=self.model,
+                model=self.litellm_model,
                 messages=messages,
                 temperature=0,
                 max_tokens=self._get_max_tokens(),

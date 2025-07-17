@@ -83,7 +83,7 @@ async def main():
         models_to_test.extend(["gpt-4o-mini", "gpt-4o"])
     
     if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
-        models_to_test.extend(["gemini/gemini-2.5-flash", "gemini/gemini-2.5-pro"])
+        models_to_test.extend(["gemini-2.5-flash", "gemini-2.5-pro"])
     
     if not models_to_test:
         print("❌ No API keys found. Please set OPENAI_API_KEY or GEMINI_API_KEY")
