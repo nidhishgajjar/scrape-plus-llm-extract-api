@@ -98,11 +98,11 @@ class LLMProcessor:
                             model=self.model,
                             contents=prompt,
                             config=genai.GenerateContentConfig(
-                                max_output_tokens=65000
+                                maxOutputTokens=65000
                             )
                         )
                     ),
-                    timeout=120  # 2 minute timeout
+                    timeout=300  # 5 minute timeout
                 )
                 
                 response_text = response.text
