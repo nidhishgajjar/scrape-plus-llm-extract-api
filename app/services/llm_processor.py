@@ -98,7 +98,7 @@ class LLMProcessor:
                             model=self.model,
                             contents=prompt,
                             config=genai.GenerateContentConfig(
-                                maxOutputTokens=65000
+                                max_output_tokens=65000
                             )
                         )
                     ),
