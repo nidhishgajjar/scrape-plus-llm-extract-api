@@ -138,8 +138,6 @@ async def scrape_and_extract(request: ExtractRequest):
     logger.info(f"[{request_id}] URL: {request.url}")
     logger.info(f"[{request_id}] Model: {request.model}")
     logger.info(f"[{request_id}] Scraping Method: {'InHouse Playwright' if request.use_inhouse_scraping else 'Firecrawl'}")
-    logger.info(f"[{request_id}] Extraction Prompt: {request.extraction_prompt}")
-    logger.info(f"[{request_id}] Output Format: {request.output_format}")
     
     try:
         settings = get_settings()
