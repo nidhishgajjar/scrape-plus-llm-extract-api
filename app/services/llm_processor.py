@@ -1,32 +1,43 @@
 import os
-from typing import Any, Dict, Literal, Tuple
+from typing import Any, Dict, Literal, Tuple, Optional
 import json
 from datetime import datetime
 import asyncio
 import gc
 from app.config import get_settings
 import litellm
+import traceback
+from app.utils.logger import setup_logger
 
 ModelType = Literal["gpt-4o", "gpt-4o-mini", "gemini-2.5-flash", "gemini-2.5-pro"]
 
+logger = setup_logger(__name__)
+
 class LLMProcessor:
-    def __init__(self, model: ModelType = "gpt-4o-mini"):
+    def __init__(self, model: ModelType = "gpt-4o-mini", request_id: Optional[str] = None):
         self.model = model
+        self.request_id = request_id or "unknown"
         self.settings = get_settings()
+        
+        logger.debug(f"[{self.request_id}] Initializing LLMProcessor with model: {model}")
         
         # Set up environment variables for litellm
         if model.startswith("gemini"):
             api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
             if not api_key:
+                logger.error(f"[{self.request_id}] GEMINI_API_KEY or GOOGLE_API_KEY not found")
                 raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY environment variable required for Gemini models")
             os.environ["GEMINI_API_KEY"] = api_key
             # Convert to litellm format
             self.litellm_model = f"gemini/{model}"
+            logger.debug(f"[{self.request_id}] Using Gemini model: {self.litellm_model}")
         else:
             # OpenAI models
             if not os.environ.get("OPENAI_API_KEY"):
+                logger.error(f"[{self.request_id}] OPENAI_API_KEY not found")
                 raise ValueError("OPENAI_API_KEY environment variable required for OpenAI models")
             self.litellm_model = model
+            logger.debug(f"[{self.request_id}] Using OpenAI model: {self.litellm_model}")
     
     def _get_max_tokens(self) -> int:
         """Get appropriate max tokens based on model"""
@@ -43,6 +54,9 @@ class LLMProcessor:
         extraction_prompt: str, 
         output_format: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], str]:
+        logger.info(f"[{self.request_id}] Starting LLM extraction with {self.litellm_model}")
+        logger.debug(f"[{self.request_id}] Content size: {len(content)} chars")
+        logger.debug(f"[{self.request_id}] Max tokens configured: {self._get_max_tokens()}")
         system_prompt = f"""
         You are a precise data extraction assistant. Your task is to:
         1. Analyze the provided content
@@ -73,6 +87,8 @@ class LLMProcessor:
                 {"role": "user", "content": content}
             ]
             
+            logger.info(f"[{self.request_id}] Sending request to {self.litellm_model} API...")
+            
             # Use litellm acompletion
             response = await litellm.acompletion(
                 model=self.litellm_model,
@@ -83,45 +99,75 @@ class LLMProcessor:
                 response_format={"type": "json_object"} if not self.model.startswith("gemini") else None
             )
             
+            logger.info(f"[{self.request_id}] Received response from LLM")
+            
             response_text = response.choices[0].message.content
+            
+            # Log truncated response for debugging
+            truncated_response = response_text[:500] + "..." if len(response_text) > 500 else response_text
+            logger.debug(f"[{self.request_id}] LLM Response (truncated): {truncated_response}")
+            logger.debug(f"[{self.request_id}] Response length: {len(response_text)} chars")
             
             # Free up memory after large operations
             gc.collect()
             
-            print(f"LLM Response: {response_text}")
-            
             # Try to parse JSON response
             try:
+                logger.debug(f"[{self.request_id}] Parsing JSON response...")
                 extracted_data = json.loads(response_text)
-            except json.JSONDecodeError:
+                logger.info(f"[{self.request_id}] Successfully parsed JSON response")
+            except json.JSONDecodeError as json_err:
+                logger.warning(f"[{self.request_id}] Direct JSON parsing failed: {str(json_err)}")
                 # If direct parsing fails, try to extract JSON from response
                 import re
+                logger.debug(f"[{self.request_id}] Attempting to extract JSON from response text...")
                 json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
                 if json_match:
                     extracted_data = json.loads(json_match.group())
+                    logger.info(f"[{self.request_id}] Successfully extracted and parsed JSON from response")
                 else:
+                    logger.error(f"[{self.request_id}] No valid JSON found in response")
                     raise json.JSONDecodeError("No valid JSON found in response", response_text, 0)
             
             file_path = "File saving disabled in production mode"
             
             if self.settings.DEBUG_MODE:
                 file_path = self._save_extracted_data(extracted_data)
+                logger.debug(f"[{self.request_id}] Extracted data saved to: {file_path}")
+            
+            # Log extraction success
+            logger.info(f"[{self.request_id}] LLM extraction completed successfully")
+            
+            # Log summary of extracted data
+            if isinstance(extracted_data, dict):
+                logger.debug(f"[{self.request_id}] Extracted {len(extracted_data)} fields")
+                for key in list(extracted_data.keys())[:5]:  # Log first 5 keys
+                    logger.debug(f"[{self.request_id}]   - {key}: {type(extracted_data[key]).__name__}")
                 
             return extracted_data, file_path
             
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as e:
             # Handle timeout error
-            error_data = {"error": "LLM processing timed out after 300 seconds"}
+            logger.error(f"[{self.request_id}] LLM processing timed out after 300 seconds")
+            logger.error(f"[{self.request_id}] Timeout details: {str(e)}")
+            error_data = {"error": "LLM processing timed out after 300 seconds", "raw_error": str(e)}
             return error_data, "timeout_error"
             
         except json.JSONDecodeError as e:
             # Handle JSON decoding error
-            error_data = {"error": f"LLM response was not valid JSON: {str(e)}"}
+            logger.error(f"[{self.request_id}] LLM response was not valid JSON")
+            logger.error(f"[{self.request_id}] JSON Error: {str(e)}")
+            logger.error(f"[{self.request_id}] Raw response that failed parsing: {response_text[:1000] if 'response_text' in locals() else 'No response text'}")
+            error_data = {"error": f"LLM response was not valid JSON: {str(e)}", "raw_error": str(e)}
             return error_data, "json_error"
             
         except Exception as e:
             # Handle any other exceptions
-            error_data = {"error": f"Extraction failed: {str(e)}"}
+            logger.error(f"[{self.request_id}] LLM extraction failed with unexpected error")
+            logger.error(f"[{self.request_id}] Error type: {type(e).__name__}")
+            logger.error(f"[{self.request_id}] Error message: {str(e)}")
+            logger.error(f"[{self.request_id}] Full traceback: {traceback.format_exc()}")
+            error_data = {"error": f"Extraction failed: {str(e)}", "raw_error": traceback.format_exc()}
             return error_data, "extraction_error"
         finally:
             # Always try to free memory

@@ -27,8 +27,18 @@ async def health():
 
 @router.get("/scrape")
 async def scrape_url(url: str):
+    start_time = time.time()
+    request_id = f"{int(time.time() * 1000)}"
+    
+    logger.info(f"[{request_id}] ===== SCRAPE REQUEST RECEIVED =====")
+    logger.info(f"[{request_id}] URL: {url}")
+    
     try:
+        logger.info(f"[{request_id}] Starting Playwright scraping...")
+        scrape_start = time.time()
+        
         async with async_playwright() as p:
+            logger.debug(f"[{request_id}] Launching browser...")
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page(
                 viewport={"width": 1280, "height": 720}
@@ -36,44 +46,80 @@ async def scrape_url(url: str):
             
             try:
                 # Set a page navigation timeout
+                logger.info(f"[{request_id}] Navigating to URL with 5s timeout...")
                 await page.goto(url, timeout=5000)  # 5 second timeout
+                logger.info(f"[{request_id}] Page loaded successfully")
                 
                 # Scroll with timeout
+                logger.debug(f"[{request_id}] Starting page scrolling...")
                 await asyncio.wait_for(
                     scroll_to_bottom(page),
                     timeout=15  # 15 second timeout for scrolling
                 )
+                logger.debug(f"[{request_id}] Scrolling completed")
                 
+                logger.info(f"[{request_id}] Extracting page content...")
                 html_content = await page.content()
-            except PlaywrightTimeout:
+                logger.info(f"[{request_id}] HTML content extracted (size: {len(html_content)} chars)")
+                
+            except PlaywrightTimeout as e:
+                logger.error(f"[{request_id}] Page loading timed out: {str(e)}")
                 return {
                     "status": "error",
                     "error": "Page loading timed out",
+                    "raw_error": str(e),
                     "partial_content": await page.content() if page else None
                 }
             finally:
                 await browser.close()
+                logger.debug(f"[{request_id}] Browser closed")
 
+        logger.info(f"[{request_id}] Converting HTML to Markdown...")
         markdown_content = await convert_html_to_markdown(html_content)
         
         if markdown_content is None:
+            logger.error(f"[{request_id}] Failed to convert HTML to markdown")
             raise HTTPException(status_code=500, detail="Failed to convert HTML to markdown")
+        
+        scrape_time = time.time() - scrape_start
+        logger.info(f"[{request_id}] Markdown conversion completed (size: {len(markdown_content)} chars)")
         
         settings = get_settings()
         if settings.DEBUG_MODE:
             file_path = save_markdown_to_file(markdown_content)
             saved_to = file_path
+            logger.debug(f"[{request_id}] Markdown saved to: {file_path}")
         else:
             saved_to = "File saving disabled in production mode"
+            logger.debug(f"[{request_id}] File saving disabled in production mode")
+        
+        total_time = time.time() - start_time
+        logger.info(f"[{request_id}] ===== SCRAPE REQUEST COMPLETED SUCCESSFULLY =====")
+        logger.info(f"[{request_id}] Total time: {total_time:.2f}s, Scraping: {scrape_time:.2f}s")
         
         return {
             "status": "success",
+            "request_id": request_id,
             "markdown": markdown_content,
-            "saved_to": saved_to
+            "saved_to": saved_to,
+            "processing_time": f"{total_time:.2f}s"
         }
-    except asyncio.TimeoutError:
+        
+    except asyncio.TimeoutError as e:
+        total_time = time.time() - start_time
+        logger.error(f"[{request_id}] Operation timed out after {total_time:.2f}s")
+        logger.error(f"[{request_id}] Timeout error: {str(e)}")
         raise HTTPException(status_code=504, detail="Operation timed out")
+        
+    except HTTPException:
+        raise
+        
     except Exception as e:
+        total_time = time.time() - start_time
+        logger.error(f"[{request_id}] ===== SCRAPE REQUEST FAILED =====")
+        logger.error(f"[{request_id}] Unexpected error: {str(e)}")
+        logger.error(f"[{request_id}] Raw error traceback: {traceback.format_exc()}")
+        logger.error(f"[{request_id}] Total time before failure: {total_time:.2f}s")
         raise HTTPException(status_code=500, detail=str(e)) 
 
 class ExtractRequest(BaseModel):

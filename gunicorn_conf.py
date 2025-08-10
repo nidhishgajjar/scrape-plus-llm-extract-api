@@ -41,8 +41,8 @@ group = None
 # Necessary for deployment
 umask = 0o000
 
-# Worker restart settings - disabled to prevent mid-operation restarts
-max_requests = 300  # Disabled - prevents "browser context closed" errors
+
+max_requests = 300
 max_requests_jitter = 100
 
 # Timeout settings optimized for browser automation
