@@ -91,7 +91,7 @@ async def scrape_url(url: str):
             logger.debug(f"[{request_id}] Markdown saved to: {file_path}")
         else:
             saved_to = "File saving disabled in production mode"
-            logger.debug(f"[{request_id}] File saving disabled in production mode")
+            # File saving disabled in production
         
         total_time = time.time() - start_time
         logger.info(f"[{request_id}] ===== SCRAPE REQUEST COMPLETED SUCCESSFULLY =====")
@@ -134,22 +134,18 @@ async def scrape_and_extract(request: ExtractRequest):
     start_time = time.time()
     request_id = f"{int(time.time() * 1000)}"  # Simple request ID based on timestamp
     
-    logger.info(f"[{request_id}] ===== NEW REQUEST RECEIVED =====")
-    logger.info(f"[{request_id}] URL: {request.url}")
-    logger.info(f"[{request_id}] Model: {request.model}")
-    logger.info(f"[{request_id}] Scraping Method: {'InHouse Playwright' if request.use_inhouse_scraping else 'Firecrawl'}")
+    logger.info(f"[{request_id}] REQUEST: {request.url}")
     
     try:
         settings = get_settings()
-        logger.debug(f"[{request_id}] Debug Mode: {settings.DEBUG_MODE}")
+        # Debug mode check
         
         if request.use_inhouse_scraping:
             # Use in-house Playwright scrolling approach
-            logger.info(f"[{request_id}] Starting InHouse Playwright scraping...")
+            # Starting InHouse Playwright scraping
             scrape_start = time.time()
             
             async with async_playwright() as p:
-                logger.debug(f"[{request_id}] Launching Chromium browser...")
                 browser = await p.chromium.launch(
                     headless=True,
                     args=[
@@ -162,7 +158,6 @@ async def scrape_and_extract(request: ExtractRequest):
                         '--disable-extensions'
                     ]
                 )
-                logger.debug(f"[{request_id}] Browser launched successfully")
                 
                 page = await browser.new_page(
                     viewport={"width": 1280, "height": 720},
@@ -170,7 +165,7 @@ async def scrape_and_extract(request: ExtractRequest):
                     timezone_id='America/Toronto',
                     user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 )
-                logger.debug(f"[{request_id}] New page created with custom settings")
+                # Page created with custom settings
                 
                 # Hide automation indicators
                 await page.add_init_script("""
@@ -189,13 +184,10 @@ async def scrape_and_extract(request: ExtractRequest):
                 try:
                     # Set a page navigation timeout
                     timeout_ms = int(os.environ.get('INHOUSE_SCRAPING_TIMEOUT', '30000'))
-                    logger.info(f"[{request_id}] Navigating to URL with timeout: {timeout_ms}ms")
                     await page.goto(request.url, timeout=timeout_ms)
-                    logger.info(f"[{request_id}] Successfully loaded page")
                     
                     # Small delay to appear more human-like
                     delay_ms = int(os.environ.get('INHOUSE_SCRAPING_DELAY', '7000'))
-                    logger.debug(f"[{request_id}] Waiting {delay_ms}ms for page to settle...")
                     await page.wait_for_timeout(delay_ms)
                     
                     # # Scroll with timeout
@@ -204,9 +196,7 @@ async def scrape_and_extract(request: ExtractRequest):
                     #     timeout=15  # 15 second timeout for scrolling
                     # )
                     
-                    logger.info(f"[{request_id}] Extracting page content...")
                     html_content = await page.content()
-                    logger.info(f"[{request_id}] Successfully extracted HTML content (size: {len(html_content)} chars)")
                     
                 except PlaywrightTimeout as e:
                     logger.error(f"[{request_id}] Playwright timeout error: {str(e)}")
@@ -224,9 +214,9 @@ async def scrape_and_extract(request: ExtractRequest):
                     raise
                 finally:
                     await browser.close()
-                    logger.debug(f"[{request_id}] Browser closed")
+                    # Browser closed
 
-            logger.info(f"[{request_id}] Converting HTML to Markdown...")
+            # Converting HTML to Markdown
             markdown_content = await convert_html_to_markdown(html_content)
             
             if markdown_content is None:
@@ -234,16 +224,18 @@ async def scrape_and_extract(request: ExtractRequest):
                 raise HTTPException(status_code=500, detail="Failed to convert HTML to markdown")
             
             scrape_time = time.time() - scrape_start
-            logger.info(f"[{request_id}] Scraping completed in {scrape_time:.2f}s, markdown size: {len(markdown_content)} chars")
+            
+            # Log markdown preview to help debug null extractions
+            markdown_preview = markdown_content[:300] + "..." if len(markdown_content) > 300 else markdown_content
+            logger.info(f"[{request_id}] SCRAPED: {len(markdown_content)} chars | Preview: {markdown_preview}")
             
         else:
             # Use Firecrawl approach
-            logger.info(f"[{request_id}] Starting Firecrawl scraping...")
+            # Starting Firecrawl scraping
             scrape_start = time.time()
             
             try:
                 app = FirecrawlApp(api_key=os.getenv('FIRECRAWL_API_KEY'))
-                logger.debug(f"[{request_id}] Firecrawl initialized, making request...")
                 
                 response = app.scrape_url(
                     url=request.url,
@@ -252,7 +244,10 @@ async def scrape_and_extract(request: ExtractRequest):
                 markdown_content = response['markdown']
                 
                 scrape_time = time.time() - scrape_start
-                logger.info(f"[{request_id}] Firecrawl scraping completed in {scrape_time:.2f}s, markdown size: {len(markdown_content)} chars")
+                
+                # Log markdown preview to help debug null extractions
+                markdown_preview = markdown_content[:300] + "..." if len(markdown_content) > 300 else markdown_content
+                logger.info(f"[{request_id}] SCRAPED: {len(markdown_content)} chars | Preview: {markdown_preview}")
                 
             except Exception as e:
                 logger.error(f"[{request_id}] Firecrawl scraping failed: {str(e)}")
@@ -262,22 +257,18 @@ async def scrape_and_extract(request: ExtractRequest):
         # save the markdown to a file
         file_path = "File saving disabled in production mode"
         if settings.DEBUG_MODE:
-            logger.debug(f"[{request_id}] Saving markdown to file...")
             file_path = save_markdown_to_file(markdown_content)
-            logger.info(f"[{request_id}] Markdown saved to {file_path}")
         else:
-            logger.debug(f"[{request_id}] File saving disabled in production mode")
+            file_path = "File saving disabled in production mode"
         
         # Process with LLM
-        logger.info(f"[{request_id}] ===== STARTING LLM PROCESSING =====")
-        logger.info(f"[{request_id}] Model: {request.model}")
-        logger.info(f"[{request_id}] Initializing LLM processor...")
+        # Start LLM processing
         
         llm_start = time.time()
         llm_processor = LLMProcessor(model=request.model, request_id=request_id)
         
         try:
-            logger.info(f"[{request_id}] Sending request to LLM...")
+            # Sending request to LLM
             extracted_data, extraction_file_path = await asyncio.wait_for(
                 llm_processor.extract_information(
                     content=markdown_content,
@@ -288,12 +279,7 @@ async def scrape_and_extract(request: ExtractRequest):
             )
             
             llm_time = time.time() - llm_start
-            logger.info(f"[{request_id}] LLM processing completed in {llm_time:.2f}s")
-            
-            # Log extracted data summary (truncated)
-            if "error" not in extracted_data:
-                data_str = str(extracted_data)[:500] + "..." if len(str(extracted_data)) > 500 else str(extracted_data)
-                logger.debug(f"[{request_id}] Extracted data preview: {data_str}")
+            # LLM processing completed
             
         except asyncio.TimeoutError as e:
             llm_time = time.time() - llm_start
@@ -324,8 +310,7 @@ async def scrape_and_extract(request: ExtractRequest):
             }
         
         total_time = time.time() - start_time
-        logger.info(f"[{request_id}] ===== REQUEST COMPLETED SUCCESSFULLY =====")
-        logger.info(f"[{request_id}] Total processing time: {total_time:.2f}s")
+        logger.info(f"[{request_id}] COMPLETED in {total_time:.2f}s")
         
         return {
             "status": "success",

@@ -54,9 +54,7 @@ class LLMProcessor:
         extraction_prompt: str, 
         output_format: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], str]:
-        logger.info(f"[{self.request_id}] Starting LLM extraction with {self.litellm_model}")
-        logger.debug(f"[{self.request_id}] Content size: {len(content)} chars")
-        logger.debug(f"[{self.request_id}] Max tokens configured: {self._get_max_tokens()}")
+        # Starting LLM extraction - removed verbose logging
         system_prompt = f"""
         You are a precise data extraction assistant. Your task is to:
         1. Analyze the provided content
@@ -87,7 +85,7 @@ class LLMProcessor:
                 {"role": "user", "content": content}
             ]
             
-            logger.info(f"[{self.request_id}] Sending request to {self.litellm_model} API...")
+            # Sending request to LLM
             
             # Use litellm acompletion
             response = await litellm.acompletion(
@@ -99,23 +97,20 @@ class LLMProcessor:
                 response_format={"type": "json_object"} if not self.model.startswith("gemini") else None
             )
             
-            logger.info(f"[{self.request_id}] Received response from LLM")
+            # Received response from LLM
             
             response_text = response.choices[0].message.content
             
             # Log truncated response for debugging
-            truncated_response = response_text[:500] + "..." if len(response_text) > 500 else response_text
-            logger.debug(f"[{self.request_id}] LLM Response (truncated): {truncated_response}")
-            logger.debug(f"[{self.request_id}] Response length: {len(response_text)} chars")
+            truncated_response = response_text[:300] + "..." if len(response_text) > 300 else response_text
+            logger.info(f"[{self.request_id}] LLM RESPONSE: {truncated_response}")
             
             # Free up memory after large operations
             gc.collect()
             
             # Try to parse JSON response
             try:
-                logger.debug(f"[{self.request_id}] Parsing JSON response...")
                 extracted_data = json.loads(response_text)
-                logger.info(f"[{self.request_id}] Successfully parsed JSON response")
             except json.JSONDecodeError as json_err:
                 logger.warning(f"[{self.request_id}] Direct JSON parsing failed: {str(json_err)}")
                 # If direct parsing fails, try to extract JSON from response
@@ -124,7 +119,7 @@ class LLMProcessor:
                 json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
                 if json_match:
                     extracted_data = json.loads(json_match.group())
-                    logger.info(f"[{self.request_id}] Successfully extracted and parsed JSON from response")
+                    # Successfully extracted JSON from response
                 else:
                     logger.error(f"[{self.request_id}] No valid JSON found in response")
                     raise json.JSONDecodeError("No valid JSON found in response", response_text, 0)
@@ -133,16 +128,9 @@ class LLMProcessor:
             
             if self.settings.DEBUG_MODE:
                 file_path = self._save_extracted_data(extracted_data)
-                logger.debug(f"[{self.request_id}] Extracted data saved to: {file_path}")
+                # Extracted data saved
             
-            # Log extraction success
-            logger.info(f"[{self.request_id}] LLM extraction completed successfully")
-            
-            # Log summary of extracted data
-            if isinstance(extracted_data, dict):
-                logger.debug(f"[{self.request_id}] Extracted {len(extracted_data)} fields")
-                for key in list(extracted_data.keys())[:5]:  # Log first 5 keys
-                    logger.debug(f"[{self.request_id}]   - {key}: {type(extracted_data[key]).__name__}")
+            # Extraction completed
                 
             return extracted_data, file_path
             
