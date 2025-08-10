@@ -1,5 +1,5 @@
 # Worker processes - dynamic based on available resources
-workers = 20
+workers = 5
 worker_class = "uvicorn.workers.UvicornWorker"
 worker_connections = 3000
 
