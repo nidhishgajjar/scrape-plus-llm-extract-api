@@ -3,23 +3,25 @@ import os
 import sys
 import psutil
 
-# Function to calculate optimal workers based on available memory
 def get_workers_count():
     try:
         # Get available memory in GB
         available_memory = psutil.virtual_memory().available / (1024 * 1024 * 1024)
-        
-        # Memory-based scaling: each worker needs ~500MB, leave 1GB for system
-        memory_based_workers = max(1, int((available_memory - 1) / 0.5))
-        
+
+        # Memory-based scaling: each worker needs ~1.5GB for browser automation
+        # Leave 2GB for system and other processes
+        memory_based_workers = max(1, int((available_memory - 2) / 1.5))
+
         # CPU-based scaling: typical formula
         cpu_based_workers = multiprocessing.cpu_count() * 2 + 1
-        
-        # Return the lower of the two to respect both CPU and memory constraints
-        return min(memory_based_workers, cpu_based_workers)
+
+        # Cap at 10 workers max to prevent resource exhaustion
+        optimal_workers = min(memory_based_workers, cpu_based_workers, 10)
+
+        return max(1, optimal_workers)  # Ensure at least 1 worker
     except:
-        # Default to 7 workers if we can't calculate
-        return 7
+        # Conservative default
+        return 3
 
 
 # Worker processes - dynamic based on available resources
