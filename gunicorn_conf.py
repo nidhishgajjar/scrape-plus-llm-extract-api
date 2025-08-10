@@ -42,8 +42,8 @@ group = None
 umask = 0o000
 
 # Worker restart settings - disabled to prevent mid-operation restarts
-max_requests = 0  # Disabled - prevents "browser context closed" errors
-max_requests_jitter = 0
+max_requests = 300  # Disabled - prevents "browser context closed" errors
+max_requests_jitter = 100
 
 # Timeout settings optimized for browser automation
 timeout = 600          # 10 minutes - enough for complex scraping
