@@ -99,7 +99,7 @@ async def main():
         models_to_test.extend(["gemini-2.5-flash", "gemini-2.5-pro"])
     
     if os.getenv("TOGETHER_API_KEY") or os.getenv("TOGETHERAI_API_KEY"):
-        models_to_test.append("together_ai/openai/gpt-oss-120b")
+        models_to_test.extend(["gpt-oss-20b", "gpt-oss-120b"])
     
     if os.getenv("ANTHROPIC_API_KEY"):
         models_to_test.extend(["claude-sonnet-4-20250514", "claude-3-7-sonnet-20250219", "claude-3.7-sonnet-latest", "claude-3-5-haiku-20241022", "claude-3-5-haiku-latest"])

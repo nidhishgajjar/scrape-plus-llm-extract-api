@@ -2,26 +2,13 @@
 
 A FastAPI-based web service that combines web scraping with LLM-powered data extraction from multiple providers.
 
-## Supported LLM Models
+## Supported Models
 
-### OpenAI Models
-- `gpt-4o` - GPT-4 Omni
-- `gpt-4o-mini` - GPT-4 Omni Mini
-
-### Google Gemini Models  
-- `gemini-2.5-flash` - Gemini 2.5 Flash
-- `gemini-2.5-pro` - Gemini 2.5 Pro
-
-### Anthropic Claude Models
-- `claude-sonnet-4-20250514` - Claude Sonnet 4
-- `claude-3-7-sonnet-20250219` - Claude Sonnet 3.7
-- `claude-3-7-sonnet-latest` - Claude Sonnet 3.7 (Latest)
-- `claude-3-5-haiku-20241022` - Claude Haiku 3.5
-- `claude-3-5-haiku-latest` - Claude Haiku 3.5 (Latest)
-
-### xAI Grok Models
-- `grok-4` - Grok 4
-- `grok-4-latest` - Grok 4 (Latest)
+- **OpenAI**: GPT-4o, GPT-4o-mini
+- **Google**: Gemini 2.5 Flash, Gemini 2.5 Pro
+- **TogetherAI**: GPT-OSS-20B, GPT-OSS-120B
+- **Anthropic**: Claude Sonnet 4, Claude 3.7 Sonnet, Claude 3.5 Haiku
+- **xAI**: Grok 4, Grok 4 Latest
 
 ## Example Usage for LLM Extraction endpoint
 
@@ -34,6 +21,20 @@ curl -X POST "http://localhost:8007/scrape/llm-extract" \
     "extraction_prompt": "Extract individual job URLs for all open jobs in USA or Canada from this markdown content. Only include direct job posting URLs.",
     "output_format": {"job_urls": []},
     "model": "gpt-4o-mini"
+}'
+```
+
+### Using TogetherAI Models
+```bash
+curl -X POST "http://localhost:8007/scrape/llm-extract" \
+-H "Content-Type: application/json" \
+-d '{
+    "url": "https://example.com",
+    "extraction_prompt": "Extract company information",
+    "output_format": {"company_name": "string", "description": "string"},
+    "model": "gpt-oss-120b",
+    "use_inhouse_scraping": true,
+    "delay_page_load": 3000
 }'
 ```
 

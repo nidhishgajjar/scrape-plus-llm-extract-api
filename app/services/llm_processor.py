@@ -9,7 +9,7 @@ import litellm
 import traceback
 from app.utils.logger import setup_logger
 
-ModelType = Literal["gpt-4o", "gpt-4o-mini", "gemini-2.5-flash", "gemini-2.5-pro", "claude-sonnet-4-20250514", "claude-3-7-sonnet-20250219", "claude-3-7-sonnet-latest", "claude-3-5-haiku-20241022", "claude-3-5-haiku-latest", "grok-4", "grok-4-latest"]
+ModelType = Literal["gpt-4o", "gpt-4o-mini", "gemini-2.5-flash", "gemini-2.5-pro", "claude-sonnet-4-20250514", "claude-3-7-sonnet-20250219", "claude-3-7-sonnet-latest", "claude-3-5-haiku-20241022", "claude-3-5-haiku-latest", "grok-4", "grok-4-latest", "gpt-oss-20b", "gpt-oss-120b"]
 
 logger = setup_logger(__name__)
 
@@ -49,6 +49,15 @@ class LLMProcessor:
             # Convert to litellm format
             self.litellm_model = f"xai/{model}"
             logger.debug(f"[{self.request_id}] Using Grok model: {self.litellm_model}")
+        elif model.startswith("gpt-oss"):
+            api_key = os.environ.get("TOGETHER_API_KEY") or os.environ.get("TOGETHERAI_API_KEY")
+            if not api_key:
+                logger.error(f"[{self.request_id}] TOGETHER_API_KEY or TOGETHERAI_API_KEY not found")
+                raise ValueError("TOGETHER_API_KEY or TOGETHERAI_API_KEY environment variable required for TogetherAI models")
+            os.environ["TOGETHER_API_KEY"] = api_key
+            # Convert to litellm format
+            self.litellm_model = f"together_ai/openai/{model}"
+            logger.debug(f"[{self.request_id}] Using TogetherAI model: {self.litellm_model}")
         else:
             # OpenAI models
             if not os.environ.get("OPENAI_API_KEY"):
@@ -65,6 +74,8 @@ class LLMProcessor:
             return 4096  # Anthropic Claude models
         elif self.model.startswith("grok"):
             return 8192  # Grok models
+        elif self.model.startswith("gpt-oss"):
+            return 131072  # TogetherAI models (128K context)
         elif self.model == "gpt-4o-mini":
             return 16384  # GPT-4o mini
         else:
