@@ -128,6 +128,7 @@ class ExtractRequest(BaseModel):
     output_format: Dict[str, Any]
     model: ModelType = "gpt-4o-mini"
     use_inhouse_scraping: bool = False
+    delay_page_load: int = 7000  # Delay in milliseconds for both scraping methods
 
 @router.post("/scrape/llm-extract")
 async def scrape_and_extract(request: ExtractRequest):
@@ -187,7 +188,8 @@ async def scrape_and_extract(request: ExtractRequest):
                     await page.goto(request.url, timeout=timeout_ms)
                     
                     # Small delay to appear more human-like
-                    delay_ms = int(os.environ.get('INHOUSE_SCRAPING_DELAY', '7000'))
+                    delay_ms = request.delay_page_load
+                    logger.info(f"[{request_id}] Using page load delay: {delay_ms}ms")
                     await page.wait_for_timeout(delay_ms)
                     
                     # # Scroll with timeout
@@ -237,9 +239,19 @@ async def scrape_and_extract(request: ExtractRequest):
             try:
                 app = FirecrawlApp(api_key=os.getenv('FIRECRAWL_API_KEY'))
                 
+                # Add delay parameter to Firecrawl
+                firecrawl_params = {
+                    'formats': ['markdown'],
+                    'actions': [
+                        {"type": "wait", "milliseconds": request.delay_page_load}
+                    ]
+                }
+                
+                logger.info(f"[{request_id}] Using Firecrawl with delay: {request.delay_page_load}ms")
+                
                 response = app.scrape_url(
                     url=request.url,
-                    params={'formats': ['markdown']}
+                    params=firecrawl_params
                 )
                 markdown_content = response['markdown']
                 

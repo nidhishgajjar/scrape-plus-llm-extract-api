@@ -92,7 +92,37 @@ curl -X POST "http://localhost:8007/scrape/llm-extract" \
             }
         ]
     },
-    "model": "grok-4"
+    "model": "grok-4",
+    "use_inhouse_scraping": true,
+    "delay_page_load": 7000
+}'
+```
+
+### Using In-house Scraping (Playwright) with Custom Delay
+```bash
+curl -X POST "http://localhost:8007/scrape/llm-extract" \
+-H "Content-Type: application/json" \
+-d '{
+    "url": "https://example.com",
+    "extraction_prompt": "Extract data...",
+    "output_format": {...},
+    "model": "gpt-4o-mini",
+    "use_inhouse_scraping": true,
+    "delay_page_load": 7000
+}'
+```
+
+### Using Firecrawl with Custom Delay
+```bash
+curl -X POST "http://localhost:8007/scrape/llm-extract" \
+-H "Content-Type: application/json" \
+-d '{
+    "url": "https://example.com",
+    "extraction_prompt": "Extract data...",
+    "output_format": {...},
+    "model": "gpt-4o-mini",
+    "use_inhouse_scraping": false,
+    "delay_page_load": 7000
 }'
 ```
 
@@ -104,3 +134,12 @@ curl -X POST "http://localhost:8007/scrape/llm-extract" \
 - `XAI_API_KEY` - For xAI Grok models
 - `FIRECRAWL_API_KEY` - For external scraping (optional)
 - `DEBUG_MODE` - Enable file saving and verbose logging
+
+## API Request Fields
+
+- `url`: The webpage URL to scrape
+- `extraction_prompt`: Instructions for what data to extract
+- `output_format`: Expected JSON structure for extracted data
+- `model`: LLM model to use for extraction
+- `use_inhouse_scraping`: Whether to use Playwright (true) or Firecrawl (false)
+- `delay_page_load`: Page load delay in milliseconds for both in-house scraping (Playwright) and Firecrawl (default: 7000ms)
