@@ -56,7 +56,7 @@ class LLMProcessor:
                 raise ValueError("TOGETHER_API_KEY or TOGETHERAI_API_KEY environment variable required for TogetherAI models")
             os.environ["TOGETHER_API_KEY"] = api_key
             # Convert to litellm format
-            self.litellm_model = f"together_ai/openai/{model}"
+            self.litellm_model = f"together_ai/{model}"
             logger.debug(f"[{self.request_id}] Using TogetherAI model: {self.litellm_model}")
         else:
             # OpenAI models
