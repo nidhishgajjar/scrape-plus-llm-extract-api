@@ -9,7 +9,7 @@ import litellm
 import traceback
 from app.utils.logger import setup_logger
 
-ModelType = Literal["gpt-4o", "gpt-4o-mini", "gemini-2.5-flash", "gemini-2.5-pro"]
+ModelType = Literal["gpt-4o", "gpt-4o-mini", "gemini-2.5-flash", "gemini-2.5-pro", "claude-sonnet-4-20250514", "claude-3-7-sonnet-20250219", "claude-3-7-sonnet-latest", "claude-3-5-haiku-20241022", "claude-3-5-haiku-latest", "grok-4", "grok-4-latest"]
 
 logger = setup_logger(__name__)
 
@@ -31,6 +31,24 @@ class LLMProcessor:
             # Convert to litellm format
             self.litellm_model = f"gemini/{model}"
             logger.debug(f"[{self.request_id}] Using Gemini model: {self.litellm_model}")
+        elif model.startswith("claude"):
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            if not api_key:
+                logger.error(f"[{self.request_id}] ANTHROPIC_API_KEY not found")
+                raise ValueError("ANTHROPIC_API_KEY environment variable required for Anthropic models")
+            os.environ["ANTHROPIC_API_KEY"] = api_key
+            # Convert to litellm format
+            self.litellm_model = f"anthropic/{model}"
+            logger.debug(f"[{self.request_id}] Using Anthropic model: {self.litellm_model}")
+        elif model.startswith("grok"):
+            api_key = os.environ.get("XAI_API_KEY")
+            if not api_key:
+                logger.error(f"[{self.request_id}] XAI_API_KEY not found")
+                raise ValueError("XAI_API_KEY environment variable required for Grok models")
+            os.environ["XAI_API_KEY"] = api_key
+            # Convert to litellm format
+            self.litellm_model = f"xai/{model}"
+            logger.debug(f"[{self.request_id}] Using Grok model: {self.litellm_model}")
         else:
             # OpenAI models
             if not os.environ.get("OPENAI_API_KEY"):
@@ -43,6 +61,10 @@ class LLMProcessor:
         """Get appropriate max tokens based on model"""
         if self.model.startswith("gemini"):
             return 65535  # Gemini models (both pro and flash)
+        elif self.model.startswith("claude"):
+            return 4096  # Anthropic Claude models
+        elif self.model.startswith("grok"):
+            return 8192  # Grok models
         elif self.model == "gpt-4o-mini":
             return 16384  # GPT-4o mini
         else:
@@ -94,7 +116,7 @@ class LLMProcessor:
                 temperature=0,
                 max_tokens=self._get_max_tokens(),
                 timeout=300,  # 5 minute timeout
-                response_format={"type": "json_object"} if not self.model.startswith("gemini") else None
+                response_format={"type": "json_object"} if not (self.model.startswith("gemini") or self.model.startswith("claude") or self.model.startswith("grok")) else None
             )
             
             # Received response from LLM
