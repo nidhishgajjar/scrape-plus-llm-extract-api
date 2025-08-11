@@ -98,8 +98,11 @@ async def main():
     if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
         models_to_test.extend(["gemini-2.5-flash", "gemini-2.5-pro"])
     
+    if os.getenv("TOGETHER_API_KEY") or os.getenv("TOGETHERAI_API_KEY"):
+        models_to_test.append("together_ai/openai/gpt-oss-120b")
+    
     if os.getenv("ANTHROPIC_API_KEY"):
-        models_to_test.extend(["claude-sonnet-4-20250514", "claude-3-7-sonnet-20250219", "claude-3-7-sonnet-latest", "claude-3-5-haiku-20241022", "claude-3-5-haiku-latest"])
+        models_to_test.extend(["claude-sonnet-4-20250514", "claude-3-7-sonnet-20250219", "claude-3.7-sonnet-latest", "claude-3-5-haiku-20241022", "claude-3-5-haiku-latest"])
     
     if os.getenv("XAI_API_KEY"):
         models_to_test.extend(["grok-4", "grok-4-latest"])
@@ -108,6 +111,7 @@ async def main():
         print("❌ No API keys found. Please set one of the following:")
         print("   - OPENAI_API_KEY (for GPT models)")
         print("   - GEMINI_API_KEY or GOOGLE_API_KEY (for Gemini models)")
+        print("   - TOGETHER_API_KEY (for TogetherAI models)")
         print("   - ANTHROPIC_API_KEY (for Claude models)")
         print("   - XAI_API_KEY (for Grok models)")
         return

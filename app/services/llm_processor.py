@@ -109,6 +109,10 @@ class LLMProcessor:
             
             # Sending request to LLM
             
+            # Set drop_params for Together AI models
+            if "together_ai" in self.litellm_model:
+                litellm.drop_params = True
+            
             # Use litellm acompletion
             response = await litellm.acompletion(
                 model=self.litellm_model,
