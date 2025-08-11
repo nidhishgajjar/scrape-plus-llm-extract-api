@@ -108,7 +108,7 @@ curl -X POST "http://localhost:8007/scrape/llm-extract" \
     "output_format": {...},
     "model": "gpt-4o-mini",
     "use_inhouse_scraping": true,
-    "delay_page_load": 7000
+    "delay_page_load": 3000
 }'
 ```
 
@@ -122,7 +122,7 @@ curl -X POST "http://localhost:8007/scrape/llm-extract" \
     "output_format": {...},
     "model": "gpt-4o-mini",
     "use_inhouse_scraping": false,
-    "delay_page_load": 7000
+    "delay_page_load": 3000
 }'
 ```
 
@@ -142,4 +142,4 @@ curl -X POST "http://localhost:8007/scrape/llm-extract" \
 - `output_format`: Expected JSON structure for extracted data
 - `model`: LLM model to use for extraction
 - `use_inhouse_scraping`: Whether to use Playwright (true) or Firecrawl (false)
-- `delay_page_load`: Page load delay in milliseconds for both in-house scraping (Playwright) and Firecrawl (default: 7000ms)
+- `delay_page_load`: Page load delay in milliseconds for both in-house scraping (Playwright) and Firecrawl (default: 3000ms)

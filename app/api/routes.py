@@ -128,7 +128,7 @@ class ExtractRequest(BaseModel):
     output_format: Dict[str, Any]
     model: ModelType = "gpt-4o-mini"
     use_inhouse_scraping: bool = False
-    delay_page_load: int = 7000  # Delay in milliseconds for both scraping methods
+    delay_page_load: int = 3000  # Delay in milliseconds for both scraping methods
 
 @router.post("/scrape/llm-extract")
 async def scrape_and_extract(request: ExtractRequest):
