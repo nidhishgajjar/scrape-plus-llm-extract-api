@@ -79,14 +79,17 @@ async def main():
     models_to_test = []
     
     # Check which models we can test based on available API keys
-    if os.getenv("OPENAI_API_KEY"):
-        models_to_test.extend(["gpt-4o-mini", "gpt-4o"])
+    # if os.getenv("OPENAI_API_KEY"):
+    #     models_to_test.extend(["gpt-4o-mini", "gpt-4o"])
     
-    if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
-        models_to_test.extend(["gemini-2.5-flash", "gemini-2.5-pro"])
+    # if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
+    #     models_to_test.extend(["gemini-2.5-flash", "gemini-2.5-pro"])
+    
+    if os.getenv("TOGETHER_API_KEY") or os.getenv("TOGETHERAI_API_KEY"):
+        models_to_test.append("together_ai/openai/gpt-oss-120b")
     
     if not models_to_test:
-        print("❌ No API keys found. Please set OPENAI_API_KEY or GEMINI_API_KEY")
+        print("❌ No API keys found. Please set OPENAI_API_KEY, GEMINI_API_KEY, or TOGETHER_API_KEY")
         return
     
     print(f"Testing {len(models_to_test)} models: {', '.join(models_to_test)}")
