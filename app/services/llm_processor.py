@@ -54,9 +54,13 @@ class LLMProcessor:
             if not api_key:
                 logger.error(f"[{self.request_id}] TOGETHER_API_KEY or TOGETHERAI_API_KEY not found")
                 raise ValueError("TOGETHER_API_KEY or TOGETHERAI_API_KEY environment variable required for TogetherAI models")
+            # Ensure env var is set for LiteLLM's together_ai provider
             os.environ["TOGETHER_API_KEY"] = api_key
-            # Convert to litellm format
-            self.litellm_model = f"together_ai/{model}"
+            # If the model starts with 'gpt', Together requires the 'openai/' prefix under their provider
+            together_model = f"openai/{model}" if model.startswith("gpt") else model
+            # Use LiteLLM provider route: together_ai/{resolved_model}
+            self.litellm_model = f"together_ai/{together_model}"
+            self._using_together = True
             logger.debug(f"[{self.request_id}] Using TogetherAI model: {self.litellm_model}")
         else:
             # OpenAI models
@@ -121,18 +125,24 @@ class LLMProcessor:
             # Sending request to LLM
             
             # Set drop_params for Together AI models
-            if "together_ai" in self.litellm_model:
+            if getattr(self, "_using_together", False):
                 litellm.drop_params = True
             
             # Use litellm acompletion
-            response = await litellm.acompletion(
-                model=self.litellm_model,
-                messages=messages,
-                temperature=0,
-                max_tokens=self._get_max_tokens(),
-                timeout=300,  # 5 minute timeout
-                response_format={"type": "json_object"} if not (self.model.startswith("gemini") or self.model.startswith("claude") or self.model.startswith("grok")) else None
-            )
+            request_kwargs = {
+                "model": self.litellm_model,
+                "messages": messages,
+                "temperature": 0,
+                "max_tokens": self._get_max_tokens(),
+                "timeout": 300,
+            }
+            # Only OpenAI-compatible providers support response_format
+            if not (self.model.startswith("gemini") or self.model.startswith("claude") or self.model.startswith("grok")):
+                request_kwargs["response_format"] = {"type": "json_object"}
+
+            # For together_ai provider via env, no need to override api_base/api_key here
+
+            response = await litellm.acompletion(**request_kwargs)
             
             # Received response from LLM
             

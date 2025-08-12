@@ -4,6 +4,7 @@ Test script to verify litellm integration for all supported models
 """
 import asyncio
 import os
+import requests
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -102,7 +103,7 @@ async def main():
         models_to_test.extend(["gpt-oss-20b", "gpt-oss-120b"])
     
     if os.getenv("ANTHROPIC_API_KEY"):
-        models_to_test.extend(["claude-sonnet-4-20250514", "claude-3-7-sonnet-20250219", "claude-3.7-sonnet-latest", "claude-3-5-haiku-20241022", "claude-3-5-haiku-latest"])
+        models_to_test.extend(["claude-sonnet-4-20250514", "claude-3-7-sonnet-20250219", "claude-3-7-sonnet-latest", "claude-3-5-haiku-20241022", "claude-3-5-haiku-latest"])
     
     if os.getenv("XAI_API_KEY"):
         models_to_test.extend(["grok-4", "grok-4-latest"])
