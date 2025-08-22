@@ -79,11 +79,36 @@ class LLMProcessor:
         elif self.model.startswith("grok"):
             return 8192  # Grok models
         elif self.model.startswith("gpt-oss"):
-            return 131072  # TogetherAI models (128K context)
+            # TogetherAI models - reserve tokens for input
+            # Total context is 131072, reserve ~20% for input, use 80% for output
+            return 100000  # Conservative approach to avoid token limit errors
         elif self.model == "gpt-4o-mini":
             return 16384  # GPT-4o mini
         else:
             return 4096  # GPT-4o and other OpenAI models
+    
+    def _calculate_safe_max_tokens(self, content: str, extraction_prompt: str) -> int:
+        """Calculate safe max_tokens considering input length and model limits"""
+        # Rough token estimation (words + punctuation)
+        estimated_input_tokens = len(content.split()) + len(extraction_prompt.split()) + 1000  # Buffer for system prompt
+        
+        base_max_tokens = self._get_max_tokens()
+        
+        if self.model.startswith("gpt-oss"):
+            # TogetherAI models have 131072 total context limit
+            total_context = 131072
+            # Reserve tokens for input + safety buffer
+            reserved_tokens = estimated_input_tokens + 2000
+            available_tokens = total_context - reserved_tokens
+            
+            # Use the smaller of base_max_tokens or available_tokens
+            safe_max_tokens = min(base_max_tokens, max(available_tokens, 1000))  # Minimum 1000 tokens
+            
+            logger.info(f"[{self.request_id}] Token calculation: Input~{estimated_input_tokens}, Reserved~{reserved_tokens}, Available~{available_tokens}, Final~{safe_max_tokens}")
+            
+            return safe_max_tokens
+        
+        return base_max_tokens
     
     async def extract_information(
         self, 
@@ -133,7 +158,7 @@ class LLMProcessor:
                 "model": self.litellm_model,
                 "messages": messages,
                 "temperature": 0,
-                "max_tokens": self._get_max_tokens(),
+                "max_tokens": self._calculate_safe_max_tokens(content, extraction_prompt),
                 "timeout": 300,
             }
             # Only OpenAI-compatible providers support response_format
@@ -147,6 +172,15 @@ class LLMProcessor:
             # Received response from LLM
             
             response_text = response.choices[0].message.content
+            
+            # Validate response quality
+            if not response_text or response_text.strip() == "":
+                logger.error(f"[{self.request_id}] LLM returned empty response")
+                return {"error": "LLM returned empty response - possible context overflow or API issue"}, "empty_response_error"
+            
+            if len(response_text) < 10:  # Very short response
+                logger.warning(f"[{self.request_id}] LLM returned very short response: {response_text}")
+                return {"error": "LLM response too short - possible context issues or incomplete generation"}, "short_response_error"
             
             # Log truncated response for debugging
             truncated_response = response_text[:300] + "..." if len(response_text) > 300 else response_text
@@ -181,6 +215,29 @@ class LLMProcessor:
                 
             return extracted_data, file_path
             
+        except litellm.exceptions.BadRequestError as e:
+            # Handle specific token limit errors
+            if "token count exceeds" in str(e).lower() or "context length" in str(e).lower():
+                logger.error(f"[{self.request_id}] Token limit exceeded: {str(e)}")
+                error_data = {"error": "Content too long for this model. Please reduce input size or use a model with larger context.", "raw_error": str(e)}
+                return error_data, "token_limit_error"
+            else:
+                logger.error(f"[{self.request_id}] Bad request error: {str(e)}")
+                error_data = {"error": f"Bad request to LLM service: {str(e)}", "raw_error": str(e)}
+                return error_data, "bad_request_error"
+                
+        except litellm.exceptions.RateLimitError as e:
+            # Handle rate limiting
+            logger.error(f"[{self.request_id}] Rate limit exceeded: {str(e)}")
+            error_data = {"error": "Rate limit exceeded. Please try again later.", "raw_error": str(e)}
+            return error_data, "rate_limit_error"
+            
+        except litellm.exceptions.ServiceUnavailableError as e:
+            # Handle service unavailable
+            logger.error(f"[{self.request_id}] LLM service unavailable: {str(e)}")
+            error_data = {"error": "LLM service temporarily unavailable. Please try again later.", "raw_error": str(e)}
+            return error_data, "service_unavailable_error"
+            
         except asyncio.TimeoutError as e:
             # Handle timeout error
             logger.error(f"[{self.request_id}] LLM processing timed out after 300 seconds")
@@ -207,6 +264,16 @@ class LLMProcessor:
         finally:
             # Always try to free memory
             gc.collect()
+            
+            # Force cleanup of any remaining sessions if possible
+            try:
+                if hasattr(litellm, '_cleanup'):
+                    await litellm._cleanup()
+            except:
+                pass
+            
+            # Allow pending tasks to complete
+            await asyncio.sleep(0.1)
     
     def _save_extracted_data(self, data: Dict[str, Any]) -> str:
         # Create extractions directory if it doesn't exist
