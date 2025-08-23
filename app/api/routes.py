@@ -46,8 +46,8 @@ async def scrape_url(url: str):
             
             try:
                 # Set a page navigation timeout
-                logger.info(f"[{request_id}] Navigating to URL with 5s timeout...")
-                await page.goto(url, timeout=5000)  # 5 second timeout
+                logger.info(f"[{request_id}] Navigating to URL with 10s timeout...")
+                await page.goto(url, timeout=10000)  # 10 second timeout
                 logger.info(f"[{request_id}] Page loaded successfully")
                 
                 # Scroll with timeout
