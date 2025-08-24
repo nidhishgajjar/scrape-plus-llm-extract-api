@@ -46,8 +46,8 @@ async def scrape_url(url: str):
             
             try:
                 # Set a page navigation timeout
-                logger.info(f"[{request_id}] Navigating to URL with 5s timeout...")
-                await page.goto(url, timeout=5000)  # 5 second timeout
+                logger.info(f"[{request_id}] Navigating to URL with 10s timeout...")
+                await page.goto(url, timeout=10000)  # 10 second timeout
                 logger.info(f"[{request_id}] Page loaded successfully")
                 
                 # Scroll with timeout
@@ -292,6 +292,20 @@ async def scrape_and_extract(request: ExtractRequest):
             
             llm_time = time.time() - llm_start
             # LLM processing completed
+            
+            # Check if LLM processing returned an error
+            if isinstance(extracted_data, dict) and "error" in extracted_data:
+                logger.error(f"[{request_id}] LLM processing returned error: {extracted_data['error']}")
+                return {
+                    "status": "error",
+                    "request_id": request_id,
+                    "error": extracted_data['error'],
+                    "raw_error": extracted_data.get('raw_error', 'No raw error provided'),
+                    "markdown_file": file_path,
+                    "scraping_method": "inhouse_playwright" if request.use_inhouse_scraping else "firecrawl",
+                    "processing_time": llm_time,
+                    "llm_error_type": extraction_file_path  # This contains the error type
+                }
             
         except asyncio.TimeoutError as e:
             llm_time = time.time() - llm_start
