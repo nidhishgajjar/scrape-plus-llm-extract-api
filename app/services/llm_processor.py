@@ -69,47 +69,7 @@ class LLMProcessor:
                 raise ValueError("OPENAI_API_KEY environment variable required for OpenAI models")
             self.litellm_model = model
             logger.debug(f"[{self.request_id}] Using OpenAI model: {self.litellm_model}")
-    
-    def _get_max_tokens(self) -> int:
-        """Get appropriate max tokens based on model"""
-        if self.model.startswith("gemini"):
-            return 65535  # Gemini models (both pro and flash)
-        elif self.model.startswith("claude"):
-            return 4096  # Anthropic Claude models
-        elif self.model.startswith("grok"):
-            return 8192  # Grok models
-        elif self.model.startswith("gpt-oss"):
-            # TogetherAI models - reserve tokens for input
-            # Total context is 131072, reserve ~20% for input, use 80% for output
-            return 100000  # Conservative approach to avoid token limit errors
-        elif self.model == "gpt-4o-mini":
-            return 16384  # GPT-4o mini
-        else:
-            return 4096  # GPT-4o and other OpenAI models
-    
-    def _calculate_safe_max_tokens(self, content: str, extraction_prompt: str) -> int:
-        """Calculate safe max_tokens considering input length and model limits"""
-        # Rough token estimation (words + punctuation)
-        estimated_input_tokens = len(content.split()) + len(extraction_prompt.split()) + 1000  # Buffer for system prompt
-        
-        base_max_tokens = self._get_max_tokens()
-        
-        if self.model.startswith("gpt-oss"):
-            # TogetherAI models have 131072 total context limit
-            total_context = 131072
-            # Reserve tokens for input + safety buffer
-            reserved_tokens = estimated_input_tokens + 2000
-            available_tokens = total_context - reserved_tokens
-            
-            # Use the smaller of base_max_tokens or available_tokens
-            safe_max_tokens = min(base_max_tokens, max(available_tokens, 1000))  # Minimum 1000 tokens
-            
-            logger.info(f"[{self.request_id}] Token calculation: Input~{estimated_input_tokens}, Reserved~{reserved_tokens}, Available~{available_tokens}, Final~{safe_max_tokens}")
-            
-            return safe_max_tokens
-        
-        return base_max_tokens
-    
+
     async def extract_information(
         self, 
         content: str, 
@@ -128,6 +88,15 @@ class LLMProcessor:
         
         Extraction Requirements:
         {extraction_prompt}
+        
+        CRITICAL JSON FORMATTING RULES:
+        - Return ONLY valid JSON - no markdown, no extra text
+        - All string values must be properly escaped for JSON
+        - Replace newlines with \\n, tabs with \\t
+        - Escape quotes with \\ (e.g., "description": "He said \\"Hello\\"")
+        - No markdown formatting (##, **, etc.) in JSON values
+        - All values must be valid JSON data types
+        - Ensure the response starts with {{ and ends with }}
         
         Rules:
         - Strictly follow the output format
@@ -153,12 +122,11 @@ class LLMProcessor:
             if getattr(self, "_using_together", False):
                 litellm.drop_params = True
             
-            # Use litellm acompletion
+            # Use litellm acompletion without max_tokens - let LLM decide
             request_kwargs = {
                 "model": self.litellm_model,
                 "messages": messages,
                 "temperature": 0,
-                "max_tokens": self._calculate_safe_max_tokens(content, extraction_prompt),
                 "timeout": 300,
             }
             # Only OpenAI-compatible providers support response_format
