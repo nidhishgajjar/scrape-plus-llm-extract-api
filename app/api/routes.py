@@ -422,7 +422,7 @@ async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5
         logger.debug(f"[{request_id}] Request completed")
 
 @router.get("/scrape")
-async def scrape_url(url: str):
+async def scrape_url(url: str, enable_scrolling: bool = False, delay_ms: int = 5000):
     start_time = time.time()
     request_id = f"{int(time.time() * 1000)}"
     
@@ -433,7 +433,12 @@ async def scrape_url(url: str):
         scrape_start = time.time()
         
         # Use the enhanced scraping function
-        html_content, error = await perform_enhanced_scraping(url, request_id)
+        html_content, error = await perform_enhanced_scraping(
+            url, 
+            request_id,
+            delay_ms=delay_ms,
+            enable_scrolling=enable_scrolling
+        )
         
         if error:
             return error
@@ -484,6 +489,22 @@ async def scrape_url(url: str):
         logger.error(f"[{request_id}] Raw error traceback: {traceback.format_exc()}")
         logger.error(f"[{request_id}] Total time before failure: {total_time:.2f}s")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class ScrapeRequest(BaseModel):
+    url: str
+    enable_scrolling: bool = False
+    delay_ms: int = 5000
+
+
+@router.post("/scrape")
+async def scrape_url_post(request: ScrapeRequest):
+    """POST endpoint for scraping with JSON payload"""
+    return await scrape_url(
+        url=request.url,
+        enable_scrolling=request.enable_scrolling,
+        delay_ms=request.delay_ms
+    )
 
 
 async def human_like_scroll(page, max_scroll_time=15):
