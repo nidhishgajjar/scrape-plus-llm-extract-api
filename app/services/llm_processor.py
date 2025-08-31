@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, Literal, Tuple, Optional
+from typing import Any, Dict, Literal, Tuple, Optional, List
 import json
 from datetime import datetime
 import asyncio
@@ -69,55 +69,107 @@ class LLMProcessor:
                 raise ValueError("OPENAI_API_KEY environment variable required for OpenAI models")
             self.litellm_model = model
             logger.debug(f"[{self.request_id}] Using OpenAI model: {self.litellm_model}")
-    
-    def _get_max_tokens(self) -> int:
-        """Get appropriate max tokens based on model"""
-        if self.model.startswith("gemini"):
-            return 65535  # Gemini models (both pro and flash)
-        elif self.model.startswith("claude"):
-            return 4096  # Anthropic Claude models
-        elif self.model.startswith("grok"):
-            return 8192  # Grok models
-        elif self.model.startswith("gpt-oss"):
-            # TogetherAI models - reserve tokens for input
-            # Total context is 131072, reserve ~20% for input, use 80% for output
-            return 100000  # Conservative approach to avoid token limit errors
-        elif self.model == "gpt-4o-mini":
-            return 16384  # GPT-4o mini
-        else:
-            return 4096  # GPT-4o and other OpenAI models
-    
-    def _calculate_safe_max_tokens(self, content: str, extraction_prompt: str) -> int:
-        """Calculate safe max_tokens considering input length and model limits"""
-        # Rough token estimation (words + punctuation)
-        estimated_input_tokens = len(content.split()) + len(extraction_prompt.split()) + 1000  # Buffer for system prompt
+
+    def _should_use_batch_processing(self, extraction_prompt: str, output_format: Dict[str, Any]) -> bool:
+        """Determine if batch processing is needed based on prompt and format"""
+        # Check if this is a job URL extraction that might return many results
+        job_extraction_keywords = ["job_posting_urls", "jobs", "urls", "links"]
+        prompt_lower = extraction_prompt.lower()
         
-        base_max_tokens = self._get_max_tokens()
+        # Use batch processing if:
+        # 1. Output format expects arrays of URLs/jobs
+        # 2. Prompt asks for "ALL" or "multiple" items
+        # 3. Likely to return many results
+        has_array_output = any(key in str(output_format) for key in job_extraction_keywords)
+        asks_for_all = any(word in prompt_lower for word in ["all", "multiple", "every", "each"])
         
-        if self.model.startswith("gpt-oss"):
-            # TogetherAI models have 131072 total context limit
-            total_context = 131072
-            # Reserve tokens for input + safety buffer
-            reserved_tokens = estimated_input_tokens + 2000
-            available_tokens = total_context - reserved_tokens
-            
-            # Use the smaller of base_max_tokens or available_tokens
-            safe_max_tokens = min(base_max_tokens, max(available_tokens, 1000))  # Minimum 1000 tokens
-            
-            logger.info(f"[{self.request_id}] Token calculation: Input~{estimated_input_tokens}, Reserved~{reserved_tokens}, Available~{available_tokens}, Final~{safe_max_tokens}")
-            
-            return safe_max_tokens
+        return has_array_output and asks_for_all
+
+    def _create_batch_prompts(self, extraction_prompt: str, output_format: Dict[str, Any], total_expected: int = 50) -> List[Dict[str, Any]]:
+        """Create batch prompts for processing large extractions"""
+        batch_size = 15  # Process 15 items per batch to avoid truncation
         
-        return base_max_tokens
-    
-    async def extract_information(
-        self, 
-        content: str, 
-        extraction_prompt: str, 
-        output_format: Dict[str, Any]
-    ) -> Tuple[Dict[str, Any], str]:
-        # Starting LLM extraction - removed verbose logging
-        system_prompt = f"""
+        batches = []
+        for i in range(0, total_expected, batch_size):
+            start_idx = i + 1
+            end_idx = min(i + batch_size, total_expected)
+            
+            batch_prompt = f"""
+            {extraction_prompt}
+            
+            IMPORTANT: Extract ONLY items {start_idx} to {end_idx} from the content.
+            If fewer items exist, extract what's available.
+            Ensure complete JSON response without truncation.
+            """
+            
+            batches.append({
+                "prompt": batch_prompt,
+                "batch_number": (i // batch_size) + 1,
+                "start_idx": start_idx,
+                "end_idx": end_idx,
+                "expected_count": end_idx - start_idx + 1
+            })
+        
+        return batches
+
+    async def _process_batch(self, content: str, batch_info: Dict[str, Any], output_format: Dict[str, Any]) -> Tuple[Dict[str, Any], str]:
+        """Process a single batch of extraction"""
+        try:
+            messages = [
+                {"role": "system", "content": self._get_system_prompt(output_format)},
+                {"role": "user", "content": batch_info["prompt"]},
+                {"role": "user", "content": content}
+            ]
+            
+            # Set drop_params for Together AI models
+            if getattr(self, "_using_together", False):
+                litellm.drop_params = True
+            
+            # Use smaller max_tokens for batch processing to prevent truncation
+            request_kwargs = {
+                "model": self.litellm_model,
+                "messages": messages,
+                "temperature": 0,
+                "max_tokens": 4000,  # Conservative limit for batches
+                "timeout": 120,  # Shorter timeout for batches
+            }
+            
+            # Only OpenAI-compatible providers support response_format
+            if not (self.model.startswith("gemini") or self.model.startswith("claude") or self.model.startswith("grok")):
+                request_kwargs["response_format"] = {"type": "json_object"}
+
+            response = await litellm.acompletion(**request_kwargs)
+            response_text = response.choices[0].message.content
+            
+            # Validate response quality
+            if not response_text or response_text.strip() == "":
+                return {"error": f"Batch {batch_info['batch_number']} returned empty response"}, "empty_response_error"
+            
+            if len(response_text) < 10:
+                return {"error": f"Batch {batch_info['batch_number']} response too short"}, "short_response_error"
+            
+            # Parse JSON response
+            try:
+                extracted_data = json.loads(response_text)
+                return extracted_data, "success"
+            except json.JSONDecodeError as json_err:
+                logger.warning(f"[{self.request_id}] Batch {batch_info['batch_number']} JSON parsing failed: {str(json_err)}")
+                # Try regex extraction for batch
+                import re
+                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                if json_match:
+                    extracted_data = json.loads(json_match.group())
+                    return extracted_data, "success"
+                else:
+                    return {"error": f"Batch {batch_info['batch_number']} no valid JSON found"}, "json_error"
+                    
+        except Exception as e:
+            logger.error(f"[{self.request_id}] Batch {batch_info['batch_number']} processing failed: {str(e)}")
+            return {"error": f"Batch {batch_info['batch_number']} failed: {str(e)}"}, "batch_error"
+
+    def _get_system_prompt(self, output_format: Dict[str, Any]) -> str:
+        """Get the system prompt for extraction"""
+        return f"""
         You are a precise data extraction assistant. Your task is to:
         1. Analyze the provided content
         2. Extract specific information based on the given prompt
@@ -126,8 +178,14 @@ class LLMProcessor:
         Output Format Example:
         {json.dumps(output_format, indent=2)}
         
-        Extraction Requirements:
-        {extraction_prompt}
+        CRITICAL JSON FORMATTING RULES:
+        - Return ONLY valid JSON - no markdown, no extra text
+        - All string values must be properly escaped for JSON
+        - Replace newlines with \\n, tabs with \\t
+        - Escape quotes with \\ (e.g., "description": "He said \\"Hello\\"")
+        - No markdown formatting (##, **, etc.) in JSON values
+        - All values must be valid JSON data types
+        - Ensure the response starts with {{ and ends with }}
         
         Rules:
         - Strictly follow the output format
@@ -137,13 +195,110 @@ class LLMProcessor:
         - For URLs: 
           * Include complete URLs only
           * Ensure URLs are properly formatted
-          * Remove any duplicate URLs
+          * Remove any duplicates
           * Validate URLs match the specified criteria
         """
+
+    async def extract_information(
+        self, 
+        content: str, 
+        extraction_prompt: str, 
+        output_format: Dict[str, Any]
+    ) -> Tuple[Dict[str, Any], str]:
+        # Starting LLM extraction - removed verbose logging
+        
+        # Check if batch processing is needed
+        if self._should_use_batch_processing(extraction_prompt, output_format):
+            logger.info(f"[{self.request_id}] Using batch processing for large extraction")
+            return await self._extract_information_batched(content, extraction_prompt, output_format)
+        else:
+            logger.info(f"[{self.request_id}] Using single-pass extraction")
+            return await self._extract_information_single(content, extraction_prompt, output_format)
+
+    async def _extract_information_batched(self, content: str, extraction_prompt: str, output_format: Dict[str, Any]) -> Tuple[Dict[str, Any], str]:
+        """Extract information using batch processing to avoid truncation"""
+        try:
+            # Create batch prompts
+            batches = self._create_batch_prompts(extraction_prompt, output_format)
+            logger.info(f"[{self.request_id}] Created {len(batches)} batches for processing")
+            
+            # Process each batch
+            batch_results = []
+            successful_batches = 0
+            
+            for batch_info in batches:
+                logger.info(f"[{self.request_id}] Processing batch {batch_info['batch_number']}/{len(batches)}")
+                
+                batch_data, batch_status = await self._process_batch(content, batch_info, output_format)
+                
+                if batch_status == "success":
+                    batch_results.append(batch_data)
+                    successful_batches += 1
+                    logger.info(f"[{self.request_id}] Batch {batch_info['batch_number']} completed successfully")
+                else:
+                    logger.warning(f"[{self.request_id}] Batch {batch_info['batch_number']} failed: {batch_data.get('error', 'Unknown error')}")
+                
+                # Small delay between batches
+                await asyncio.sleep(0.5)
+            
+            # Combine batch results
+            if successful_batches == 0:
+                return {"error": "All batches failed to process"}, "all_batches_failed"
+            
+            # Merge results based on output format
+            final_result = self._merge_batch_results(batch_results, output_format)
+            
+            logger.info(f"[{self.request_id}] Batch processing completed: {successful_batches}/{len(batches)} batches successful")
+            
+            # Save combined result
+            file_path = "File saving disabled in production mode"
+            if self.settings.DEBUG_MODE:
+                file_path = self._save_extracted_data(final_result)
+            
+            return final_result, file_path
+            
+        except Exception as e:
+            logger.error(f"[{self.request_id}] Batch processing failed: {str(e)}")
+            return {"error": f"Batch processing failed: {str(e)}"}, "batch_processing_error"
+
+    def _merge_batch_results(self, batch_results: List[Dict[str, Any]], output_format: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge results from multiple batches into final output"""
+        merged_result = {}
+        
+        for batch_data in batch_results:
+            for key, value in batch_data.items():
+                if key not in merged_result:
+                    merged_result[key] = value
+                elif isinstance(value, list) and isinstance(merged_result[key], list):
+                    # Merge arrays (e.g., job_posting_urls)
+                    merged_result[key].extend(value)
+                elif isinstance(value, dict) and isinstance(merged_result[key], dict):
+                    # Merge objects
+                    merged_result[key].update(value)
+                # For other types, keep the last value
+        
+        # Remove duplicates from arrays
+        for key, value in merged_result.items():
+            if isinstance(value, list):
+                merged_result[key] = list(dict.fromkeys(value))  # Preserve order while removing duplicates
+        
+        # Add batch processing metadata
+        merged_result["_batch_processing"] = {
+            "total_batches": len(batch_results),
+            "successful_batches": len(batch_results),
+            "processing_method": "chunked_batch"
+        }
+        
+        return merged_result
+
+    async def _extract_information_single(self, content: str, extraction_prompt: str, output_format: Dict[str, Any]) -> Tuple[Dict[str, Any], str]:
+        """Original single-pass extraction method"""
+        system_prompt = self._get_system_prompt(output_format)
         
         try:
             messages = [
                 {"role": "system", "content": system_prompt},
+                {"role": "user", "content": extraction_prompt},
                 {"role": "user", "content": content}
             ]
             
@@ -153,12 +308,11 @@ class LLMProcessor:
             if getattr(self, "_using_together", False):
                 litellm.drop_params = True
             
-            # Use litellm acompletion
+            # Use litellm acompletion without max_tokens - let LLM decide
             request_kwargs = {
                 "model": self.litellm_model,
                 "messages": messages,
                 "temperature": 0,
-                "max_tokens": self._calculate_safe_max_tokens(content, extraction_prompt),
                 "timeout": 300,
             }
             # Only OpenAI-compatible providers support response_format
