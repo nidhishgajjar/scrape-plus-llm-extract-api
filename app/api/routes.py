@@ -70,11 +70,18 @@ async def health():
         "resources": status
     }
 
-async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5000, enable_scrolling: bool = False, scrolling_type: Literal["human", "bot"] = "bot"):
+async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5000, enable_scrolling: Optional[bool] = None, scrolling_type: Literal["human", "bot"] = "bot"):
     """
     Reusable enhanced scraping function with anti-detection measures.
+    Auto-enables bot scrolling when delay_ms <= 5000 (unless explicitly set).
     Returns: (html_content, error_dict or None)
     """
+    # Auto-enable bot scrolling for delay <= 5000ms if not explicitly set
+    if enable_scrolling is None:
+        enable_scrolling = delay_ms <= 5000
+        if enable_scrolling:
+            logger.info(f"[{request_id}] Auto-enabled bot scrolling (delay={delay_ms}ms <= 5000ms)")
+    
     logger.info(f"[{request_id}] Starting enhanced Playwright scraping (scrolling={'enabled (' + scrolling_type + ')' if enable_scrolling else 'disabled'})...")
     
     # Track this request
@@ -429,7 +436,7 @@ async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5
 @router.get("/scrape")
 async def scrape_url(
     url: str, 
-    enable_scrolling: bool = False, 
+    enable_scrolling: Optional[bool] = None, 
     scrolling_type: Literal["human", "bot"] = "bot",
     delay_ms: int = 5000
 ):
@@ -504,7 +511,7 @@ async def scrape_url(
 
 class ScrapeRequest(BaseModel):
     url: str
-    enable_scrolling: bool = False
+    enable_scrolling: Optional[bool] = None  # None means auto-decide based on delay
     scrolling_type: Literal["human", "bot"] = "bot"
     delay_ms: int = 5000
 
@@ -605,7 +612,7 @@ class ExtractRequest(BaseModel):
     output_format: Dict[str, Any]
     model: ModelType = "gpt-4o-mini"
     use_inhouse_scraping: bool = False
-    enable_scrolling: bool = False  # Default to no scrolling
+    enable_scrolling: Optional[bool] = None  # None means auto-decide based on delay
     scrolling_type: Literal["human", "bot"] = "bot"  # Type of scrolling
     delay_page_load: int = 5000  # Delay in milliseconds for both scraping methods
 
