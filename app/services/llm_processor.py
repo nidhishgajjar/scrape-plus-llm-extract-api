@@ -125,12 +125,11 @@ class LLMProcessor:
             if getattr(self, "_using_together", False):
                 litellm.drop_params = True
             
-            # Use smaller max_tokens for batch processing to prevent truncation
+            # Let LLM use default max_tokens to prevent truncation
             request_kwargs = {
                 "model": self.litellm_model,
                 "messages": messages,
                 "temperature": 0,
-                "max_tokens": 4000,  # Conservative limit for batches
                 "timeout": 120,  # Shorter timeout for batches
             }
             
@@ -153,15 +152,30 @@ class LLMProcessor:
                 extracted_data = json.loads(response_text)
                 return extracted_data, "success"
             except json.JSONDecodeError as json_err:
-                logger.warning(f"[{self.request_id}] Batch {batch_info['batch_number']} JSON parsing failed: {str(json_err)}")
-                # Try regex extraction for batch
+                logger.warning(f"[{self.request_id}] Batch {batch_info['batch_number']} initial JSON parsing failed, attempting recovery...")
+                # Try to clean and extract JSON
                 import re
+                
+                # First, try to extract JSON object
                 json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
                 if json_match:
-                    extracted_data = json.loads(json_match.group())
-                    return extracted_data, "success"
-                else:
-                    return {"error": f"Batch {batch_info['batch_number']} no valid JSON found"}, "json_error"
+                    try:
+                        # Clean up common JSON formatting issues
+                        cleaned_json = json_match.group()
+                        # Fix missing commas between array elements or object properties
+                        cleaned_json = re.sub(r'}(\s*)\{', r'},\1{', cleaned_json)
+                        cleaned_json = re.sub(r'"(\s*)"', r'",\1"', cleaned_json)
+                        cleaned_json = re.sub(r'](\s*)\[', r'],\1[', cleaned_json)
+                        
+                        extracted_data = json.loads(cleaned_json)
+                        logger.info(f"[{self.request_id}] Batch {batch_info['batch_number']} JSON recovered successfully")
+                        return extracted_data, "success"
+                    except json.JSONDecodeError:
+                        # If cleaning didn't help, try to extract valid JSON fragments
+                        logger.warning(f"[{self.request_id}] Batch {batch_info['batch_number']} JSON recovery failed")
+                        pass
+                
+                return {"error": f"Batch {batch_info['batch_number']} failed: {str(json_err)}"}, "json_error"
                     
         except Exception as e:
             logger.error(f"[{self.request_id}] Batch {batch_info['batch_number']} processing failed: {str(e)}")
@@ -186,6 +200,8 @@ class LLMProcessor:
         - No markdown formatting (##, **, etc.) in JSON values
         - All values must be valid JSON data types
         - Ensure the response starts with {{ and ends with }}
+        - IMPORTANT: Ensure proper comma placement between all array elements and object properties
+        - Double-check JSON syntax before responding
         
         Rules:
         - Strictly follow the output format

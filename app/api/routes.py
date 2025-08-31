@@ -241,7 +241,7 @@ async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5
             logger.info(f"[{request_id}] Navigating to URL with 30s timeout...")
             await page.goto(url, 
                 wait_until='domcontentloaded',  # or 'networkidle' for SPAs
-                timeout=30000  # 30 second timeout for Cloudflare
+                timeout=45000  # 45 second timeout for slow sites/Cloudflare
             )
             
             # Check for Cloudflare challenge
@@ -288,11 +288,15 @@ async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5
             
             # Scroll with timeout and human-like behavior
             logger.debug(f"[{request_id}] Starting page scrolling...")
-            await asyncio.wait_for(
-                human_like_scroll(page),  # Use human-like scrolling function
-                timeout=20  # 20 second timeout for scrolling
-            )
-            logger.debug(f"[{request_id}] Scrolling completed")
+            try:
+                await asyncio.wait_for(
+                    human_like_scroll(page, max_scroll_time=15),  # Pass max scroll time to function
+                    timeout=20  # 20 second timeout for scrolling
+                )
+                logger.debug(f"[{request_id}] Scrolling completed")
+            except asyncio.TimeoutError:
+                logger.warning(f"[{request_id}] Scrolling timeout reached, continuing with partial scroll")
+                # Continue anyway - we may have scrolled enough
             
             # Final wait for any lazy-loaded content
             await page.wait_for_timeout(2000)
@@ -389,15 +393,23 @@ async def scrape_url(url: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def human_like_scroll(page):
+async def human_like_scroll(page, max_scroll_time=15):
     """
     Scroll the page in a more human-like manner with variable speeds and pauses
+    Limited by max_scroll_time to prevent timeouts
     """
+    import time
+    start_time = time.time()
     viewport_height = page.viewport_size['height']
     total_height = await page.evaluate('document.body.scrollHeight')
     current_position = 0
     
     while current_position < total_height:
+        # Check if we've exceeded max scroll time
+        if time.time() - start_time > max_scroll_time:
+            logger.debug(f"Reached max scroll time of {max_scroll_time}s, stopping scroll")
+            break
+            
         # Random scroll distance (between 300-700 pixels)
         scroll_distance = random.randint(300, 700)
         
@@ -409,14 +421,14 @@ async def human_like_scroll(page):
             }});
         """)
         
-        # Random wait between scrolls (simulating reading time)
-        await page.wait_for_timeout(random.randint(500, 2000))
+        # Shorter random wait between scrolls (reduced from 500-2000 to 200-800)
+        await page.wait_for_timeout(random.randint(200, 800))
         
-        # Occasionally scroll up a bit (like a human re-reading)
-        if random.random() < 0.1:  # 10% chance
+        # Occasionally scroll up a bit (like a human re-reading) - reduced frequency
+        if random.random() < 0.05:  # Reduced from 10% to 5% chance
             scroll_up = random.randint(50, 200)
             await page.evaluate(f"window.scrollBy(0, -{scroll_up})")
-            await page.wait_for_timeout(random.randint(300, 800))
+            await page.wait_for_timeout(random.randint(200, 400))  # Reduced wait time
         
         # Update position
         current_position = await page.evaluate('window.pageYOffset')
