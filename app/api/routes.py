@@ -45,24 +45,35 @@ async def scrape_url(url: str):
             browser = await p.chromium.launch(
                 headless=True,
                 args=[
-                        '--no-sandbox',
-                        '--disable-blink-features=AutomationControlled',
-                        '--disable-dev-shm-usage',
-                        '--disable-gpu',
-                        '--no-first-run',
-                        '--no-default-browser-check',
-                        '--disable-extensions'
-                                          ])
-            page = await browser.new_page(
-                viewport={"width": 1280, "height": 720}
+                    '--no-sandbox',
+                    '--disable-blink-features=AutomationControlled',  # This is good
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--no-first-run',
+                    '--no-default-browser-check',
+                    '--disable-extensions',
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--disable-web-security',
+                    '--disable-features=BlockInsecurePrivateNetworkRequests',
+                    '--disable-features=OutOfBlinkCors',
+                    '--window-size=1920,1080',
+                    '--start-maximized'
+                ]
             )
-            page.set_extra_http_headers({
+
+            # Also consider setting a more complete viewport
+            page = await browser.new_page(
+                viewport={"width": 1920, "height": 1080},
+                screen={"width": 1920, "height": 1080},
+                device_scale_factor=1
+            )
+            await page.set_extra_http_headers({
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language': 'en-CA,en;q=0.9',
                 'Accept-Encoding': 'gzip, deflate, br',
                 'User-Agent': ua.random
             })
-            page.add_init_script("""
+            await page.add_init_script("""
                     Object.defineProperty(navigator, 'webdriver', {
                         get: () => undefined,
                     });
