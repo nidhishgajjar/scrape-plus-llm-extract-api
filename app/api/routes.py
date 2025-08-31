@@ -634,17 +634,7 @@ async def scrape_and_extract(request: ExtractRequest):
             "resources": resource_manager.get_status()
         }
     
-    try:
-        logger.info(f"[{request_id}] Processing request: {request.url}")
-        
-    except Exception as e:
-        logger.error(f"[{request_id}] Error processing request: {str(e)}")
-        return {
-            "status": "error",
-            "error": f"Error processing request: {str(e)}",
-            "message": "An error occurred while processing your request.",
-            "resources": resource_manager.get_status()
-        }
+    logger.info(f"[{request_id}] Processing request: {request.url}")
     
     try:
         settings = get_settings()
