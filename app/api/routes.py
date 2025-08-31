@@ -29,12 +29,12 @@ async def root():
 async def health():
     return {"status": "healthy", "message": "Service is running"}
 
-async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5000):
+async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5000, enable_scrolling: bool = False):
     """
     Reusable enhanced scraping function with anti-detection measures.
     Returns: (html_content, error_dict or None)
     """
-    logger.info(f"[{request_id}] Starting enhanced Playwright scraping...")
+    logger.info(f"[{request_id}] Starting enhanced Playwright scraping (scrolling={'enabled' if enable_scrolling else 'disabled'})...")
     
     async with async_playwright() as p:
         logger.debug(f"[{request_id}] Launching browser...")
@@ -286,17 +286,22 @@ async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5
                 logger.info(f"[{request_id}] Applying delay: {delay_ms}ms")
                 await page.wait_for_timeout(delay_ms)
             
-            # Scroll with timeout and human-like behavior
-            logger.debug(f"[{request_id}] Starting page scrolling...")
-            try:
-                await asyncio.wait_for(
-                    human_like_scroll(page, max_scroll_time=15),  # Pass max scroll time to function
-                    timeout=20  # 20 second timeout for scrolling
-                )
-                logger.debug(f"[{request_id}] Scrolling completed")
-            except asyncio.TimeoutError:
-                logger.warning(f"[{request_id}] Scrolling timeout reached, continuing with partial scroll")
-                # Continue anyway - we may have scrolled enough
+            # Optional scrolling to load dynamic content
+            if enable_scrolling:
+                logger.debug(f"[{request_id}] Starting human-like page scrolling...")
+                try:
+                    await asyncio.wait_for(
+                        human_like_scroll(page, max_scroll_time=15),  # Pass max scroll time to function
+                        timeout=20  # 20 second timeout for scrolling
+                    )
+                    logger.debug(f"[{request_id}] Scrolling completed")
+                except asyncio.TimeoutError:
+                    logger.warning(f"[{request_id}] Scrolling timeout reached, continuing with partial scroll")
+            else:
+                # Simple quick scroll to trigger lazy loading (minimal impact)
+                logger.debug(f"[{request_id}] Skipping scrolling as per configuration")
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await page.wait_for_timeout(500)  # Brief wait for any lazy-loaded content
             
             # Final wait for any lazy-loaded content
             await page.wait_for_timeout(2000)
@@ -446,6 +451,7 @@ class ExtractRequest(BaseModel):
     output_format: Dict[str, Any]
     model: ModelType = "gpt-4o-mini"
     use_inhouse_scraping: bool = False
+    enable_scrolling: bool = False  # Default to no scrolling
     delay_page_load: int = 5000  # Delay in milliseconds for both scraping methods
 
 @router.post("/scrape/llm-extract")
@@ -467,7 +473,8 @@ async def scrape_and_extract(request: ExtractRequest):
             html_content, error = await perform_enhanced_scraping(
                 request.url, 
                 request_id, 
-                delay_ms=request.delay_page_load
+                delay_ms=request.delay_page_load,
+                enable_scrolling=request.enable_scrolling
             )
             
             if error:
