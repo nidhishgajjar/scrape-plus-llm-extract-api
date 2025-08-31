@@ -148,7 +148,30 @@ class LLMProcessor:
 
             # For together_ai provider via env, no need to override api_base/api_key here
 
-            response = await litellm.acompletion(**request_kwargs)
+            # Retry logic for transient errors (503, 429)
+            max_retries = 3
+            retry_delay = 1
+            response = None
+            
+            for attempt in range(max_retries):
+                try:
+                    if attempt > 0:
+                        logger.info(f"[{self.request_id}] Retry attempt {attempt + 1}/{max_retries} after {retry_delay}s delay")
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                    
+                    response = await litellm.acompletion(**request_kwargs)
+                    break  # Success, exit retry loop
+                    
+                except (litellm.exceptions.InternalServerError, litellm.exceptions.ServiceUnavailableError, litellm.exceptions.RateLimitError) as e:
+                    # These are retryable errors (503, 429, etc.)
+                    if attempt < max_retries - 1:
+                        logger.warning(f"[{self.request_id}] Retryable error: {str(e)}, will retry...")
+                        continue
+                    else:
+                        # Last attempt failed, raise the error to be handled below
+                        logger.error(f"[{self.request_id}] Failed after {max_retries} attempts: {str(e)}")
+                        raise
             
             # Received response from LLM
             
