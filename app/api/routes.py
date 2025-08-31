@@ -13,9 +13,12 @@ from app.config import get_settings
 import time
 import traceback
 from app.utils.logger import setup_logger
+from fake_useragent import UserAgent
 
 router = APIRouter()
 logger = setup_logger(__name__)
+
+ua = UserAgent()
 
 @router.get("/")
 async def root():
@@ -39,11 +42,32 @@ async def scrape_url(url: str):
         
         async with async_playwright() as p:
             logger.debug(f"[{request_id}] Launching browser...")
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                        '--no-sandbox',
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-dev-shm-usage',
+                        '--disable-gpu',
+                        '--no-first-run',
+                        '--no-default-browser-check',
+                        '--disable-extensions'
+                                          ])
             page = await browser.new_page(
                 viewport={"width": 1280, "height": 720}
             )
-            
+            page.set_extra_http_headers({
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-CA,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'User-Agent': ua.random
+            })
+            page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined,
+                    });
+                """)
+
             try:
                 # Set a page navigation timeout
                 logger.info(f"[{request_id}] Navigating to URL with 10s timeout...")

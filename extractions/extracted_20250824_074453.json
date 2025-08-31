@@ -1,0 +1,17 @@
+{
+  "job_title": "Customer Service Representative",
+  "job_details": null,
+  "hybrid": false,
+  "remote": false,
+  "employment_type": null,
+  "location": "Enfield, NS",
+  "country_code": "CA",
+  "seniority_level": "entry_level",
+  "salary": {
+    "min": 0,
+    "max": 0,
+    "currency": "CAD",
+    "period": ""
+  },
+  "benefits": []
+}
