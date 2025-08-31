@@ -16,8 +16,10 @@ logger = setup_logger(__name__)
 class LLMProcessor:
     def __init__(self, model: ModelType = "gpt-4o-mini", request_id: Optional[str] = None):
         self.model = model
+        self.original_model = model  # Store original for fallback tracking
         self.request_id = request_id or "unknown"
         self.settings = get_settings()
+        self.using_fallback = False
         
         logger.debug(f"[{self.request_id}] Initializing LLMProcessor with model: {model}")
         
@@ -131,7 +133,7 @@ class LLMProcessor:
             if getattr(self, "_using_together", False):
                 litellm.drop_params = True
             
-            # Use litellm acompletion without max_tokens - let LLM decide
+            # Use litellm acompletion without max_tokens - let LLM use its default
             request_kwargs = {
                 "model": self.litellm_model,
                 "messages": messages,
@@ -192,6 +194,45 @@ class LLMProcessor:
                 
             return extracted_data, file_path
             
+        except (litellm.exceptions.InternalServerError, litellm.exceptions.ServiceUnavailableError) as e:
+            # Handle Together.ai failures with Gemini fallback
+            if self.model.startswith("gpt-oss") and not self.using_fallback:
+                logger.warning(f"[{self.request_id}] Together.ai failed, falling back to Gemini Flash")
+                logger.warning(f"[{self.request_id}] Original error: {str(e)}")
+                
+                # Switch to Gemini Flash
+                self.model = "gemini-2.5-flash"
+                self.using_fallback = True
+                
+                # Reinitialize with Gemini
+                api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+                if api_key:
+                    os.environ["GEMINI_API_KEY"] = api_key
+                    self.litellm_model = f"gemini/{self.model}"
+                    
+                    # Retry with Gemini
+                    logger.info(f"[{self.request_id}] Retrying with Gemini Flash...")
+                    result = await self._extract_information_single(content, extraction_prompt, output_format)
+                    
+                    # Add fallback info to result if successful
+                    if isinstance(result[0], dict) and "error" not in result[0]:
+                        result[0]["_fallback_used"] = {
+                            "original_model": self.original_model,
+                            "fallback_model": "gemini-2.5-flash",
+                            "reason": "Together.ai internal server error"
+                        }
+                    
+                    return result
+                else:
+                    logger.error(f"[{self.request_id}] Gemini API key not found for fallback")
+                    error_data = {"error": "Primary model failed and fallback unavailable", "raw_error": str(e)}
+                    return error_data, "fallback_unavailable_error"
+            else:
+                # Not a Together.ai model or already using fallback
+                logger.error(f"[{self.request_id}] Service unavailable: {str(e)}")
+                error_data = {"error": "LLM service temporarily unavailable. Please try again later.", "raw_error": str(e)}
+                return error_data, "service_unavailable_error"
+            
         except litellm.exceptions.BadRequestError as e:
             # Handle specific token limit errors
             if "token count exceeds" in str(e).lower() or "context length" in str(e).lower():
@@ -208,12 +249,6 @@ class LLMProcessor:
             logger.error(f"[{self.request_id}] Rate limit exceeded: {str(e)}")
             error_data = {"error": "Rate limit exceeded. Please try again later.", "raw_error": str(e)}
             return error_data, "rate_limit_error"
-            
-        except litellm.exceptions.ServiceUnavailableError as e:
-            # Handle service unavailable
-            logger.error(f"[{self.request_id}] LLM service unavailable: {str(e)}")
-            error_data = {"error": "LLM service temporarily unavailable. Please try again later.", "raw_error": str(e)}
-            return error_data, "service_unavailable_error"
             
         except asyncio.TimeoutError as e:
             # Handle timeout error
