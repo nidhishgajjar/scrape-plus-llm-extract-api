@@ -84,15 +84,17 @@ class LLMProcessor:
         {json.dumps(output_format, indent=2)}
         
         CRITICAL JSON FORMATTING RULES:
-        - Return ONLY valid JSON - no markdown, no extra text
+        - Return ONLY valid JSON - no markdown code blocks, no ```json wrapper, no extra text
+        - Your response MUST start with "{{" and end with "}}"
+        - DO NOT wrap the JSON in markdown code blocks (no ```json...```)
         - All string values must be properly escaped for JSON
         - Replace newlines with \\n, tabs with \\t
         - Escape quotes with \\ (e.g., "description": "He said \\"Hello\\"")
         - No markdown formatting (##, **, etc.) in JSON values
         - All values must be valid JSON data types
-        - Ensure the response starts with {{ and ends with }}
         - IMPORTANT: Ensure proper comma placement between all array elements and object properties
         - Double-check JSON syntax before responding
+        - REMEMBER: Return RAW JSON only, starting with "{{" and ending with "}}"
         
         Rules:
         - Strictly follow the output format
@@ -171,21 +173,57 @@ class LLMProcessor:
             # Free up memory after large operations
             gc.collect()
             
-            # Try to parse JSON response
+            # Try to parse JSON response - handle both raw JSON and markdown-wrapped JSON
+            extracted_data = None
+            
+            # First, try direct JSON parsing (for raw JSON responses)
             try:
                 extracted_data = json.loads(response_text)
+                logger.debug(f"[{self.request_id}] Successfully parsed raw JSON response")
             except json.JSONDecodeError as json_err:
-                logger.warning(f"[{self.request_id}] Direct JSON parsing failed: {str(json_err)}")
-                # If direct parsing fails, try to extract JSON from response
+                # If direct parsing fails, likely wrapped in markdown code blocks or incomplete
+                logger.debug(f"[{self.request_id}] Direct JSON parsing failed: {str(json_err)}")
+                logger.debug(f"[{self.request_id}] Response length: {len(response_text)} chars")
+                
+                # Check if response appears to be truncated (starts with JSON but incomplete)
+                if response_text.strip().startswith('{') and not response_text.strip().endswith('}'):
+                    logger.error(f"[{self.request_id}] Response appears to be truncated JSON (starts with {{ but doesn't end with }})")
+                    logger.error(f"[{self.request_id}] Last 100 chars: ...{response_text[-100:]}")
+                    raise json.JSONDecodeError("Response appears to be incomplete/truncated JSON", response_text, len(response_text))
+                
+                # Try to extract JSON from markdown code blocks or find JSON object
                 import re
-                logger.debug(f"[{self.request_id}] Attempting to extract JSON from response text...")
-                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-                if json_match:
-                    extracted_data = json.loads(json_match.group())
-                    # Successfully extracted JSON from response
-                else:
-                    logger.error(f"[{self.request_id}] No valid JSON found in response")
-                    raise json.JSONDecodeError("No valid JSON found in response", response_text, 0)
+                
+                # First try to remove markdown code blocks if present
+                cleaned_text = response_text.strip()
+                if cleaned_text.startswith('```json'):
+                    # Remove opening ```json
+                    cleaned_text = cleaned_text[7:]
+                    # Remove closing ```
+                    if cleaned_text.endswith('```'):
+                        cleaned_text = cleaned_text[:-3]
+                    cleaned_text = cleaned_text.strip()
+                    
+                    try:
+                        extracted_data = json.loads(cleaned_text)
+                        logger.info(f"[{self.request_id}] Successfully extracted JSON from markdown code block")
+                    except json.JSONDecodeError:
+                        logger.debug(f"[{self.request_id}] Failed to parse cleaned markdown text, trying regex extraction")
+                
+                # If still no success, try regex extraction as fallback
+                if extracted_data is None:
+                    logger.debug(f"[{self.request_id}] Attempting regex extraction of JSON object...")
+                    json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                    if json_match:
+                        try:
+                            extracted_data = json.loads(json_match.group())
+                            logger.info(f"[{self.request_id}] Successfully extracted JSON using regex")
+                        except json.JSONDecodeError as e:
+                            logger.error(f"[{self.request_id}] Regex-extracted text is not valid JSON: {str(e)}")
+                            raise json.JSONDecodeError("Extracted text is not valid JSON", response_text, 0)
+                    else:
+                        logger.error(f"[{self.request_id}] No JSON object pattern found in response")
+                        raise json.JSONDecodeError("No valid JSON found in response", response_text, 0)
             
             file_path = "File saving disabled in production mode"
             
@@ -264,8 +302,25 @@ class LLMProcessor:
             # Handle JSON decoding error
             logger.error(f"[{self.request_id}] LLM response was not valid JSON")
             logger.error(f"[{self.request_id}] JSON Error: {str(e)}")
-            logger.error(f"[{self.request_id}] Raw response that failed parsing: {response_text[:1000] if 'response_text' in locals() else 'No response text'}")
-            error_data = {"error": f"LLM response was not valid JSON: {str(e)}", "raw_error": str(e)}
+            
+            if 'response_text' in locals():
+                # Log first and last parts of response for better debugging
+                if len(response_text) > 2000:
+                    logger.error(f"[{self.request_id}] Response preview (first 500 chars): {response_text[:500]}")
+                    logger.error(f"[{self.request_id}] Response preview (last 500 chars): ...{response_text[-500:]}")
+                else:
+                    logger.error(f"[{self.request_id}] Full response that failed parsing: {response_text}")
+                
+                # Check for common issues
+                if "incomplete" in str(e).lower() or "truncated" in str(e).lower():
+                    error_msg = "LLM response appears to be truncated/incomplete JSON"
+                else:
+                    error_msg = f"LLM response was not valid JSON: {str(e)}"
+            else:
+                logger.error(f"[{self.request_id}] No response text available")
+                error_msg = "No response text available from LLM"
+            
+            error_data = {"error": error_msg, "raw_error": str(e)}
             return error_data, "json_error"
             
         except Exception as e:
