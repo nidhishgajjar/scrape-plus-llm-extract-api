@@ -1,11 +1,11 @@
 import random
 from fastapi import APIRouter, HTTPException
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout, Browser
 from firecrawl import FirecrawlApp
 from app.services.scraper import scroll_to_bottom, save_markdown_to_file
 from app.services.markdown_converter import convert_html_to_markdown
 from app.services.llm_processor import LLMProcessor, ModelType
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Set
 from pydantic import BaseModel
 import os
 import asyncio
@@ -13,13 +13,39 @@ import httpx
 from app.config import get_settings
 import time
 import traceback
+import signal
+import atexit
 from app.utils.logger import setup_logger
 from fake_useragent import UserAgent
+from app.utils.resource_manager import resource_manager
 
 router = APIRouter()
 logger = setup_logger(__name__)
 
 ua = UserAgent(browsers=['chrome', 'edge', 'firefox'])
+
+# Track active requests and browsers for cleanup
+active_requests: Set[str] = set()
+active_browsers: Set[Browser] = set()
+shutdown_event = asyncio.Event()
+
+def cleanup_handler(signum=None, frame=None):
+    """Handle graceful shutdown on SIGTERM/SIGINT"""
+    if signum:
+        logger.warning(f"Received shutdown signal {signum}, initiating graceful shutdown...")
+    shutdown_event.set()
+    
+    # Give active requests time to complete
+    if active_requests:
+        logger.info(f"Waiting for {len(active_requests)} active requests to complete...")
+    
+    # Note: Actual browser cleanup will happen in the finally blocks
+    logger.info("Shutdown handler completed")
+
+# Register cleanup handlers
+signal.signal(signal.SIGTERM, cleanup_handler)
+signal.signal(signal.SIGINT, cleanup_handler)
+atexit.register(cleanup_handler)
 
 @router.get("/")
 async def root():
@@ -27,7 +53,22 @@ async def root():
 
 @router.get("/health")
 async def health():
-    return {"status": "healthy", "message": "Service is running"}
+    """Health check with resource status"""
+    status = resource_manager.get_status()
+    
+    # Determine health based on resource usage
+    if status["memory_percent"] > 90:
+        return {
+            "status": "degraded",
+            "message": "High memory usage",
+            "resources": status
+        }
+    
+    return {
+        "status": "healthy",
+        "message": "Service is running",
+        "resources": status
+    }
 
 async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5000, enable_scrolling: bool = False):
     """
@@ -36,8 +77,27 @@ async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5
     """
     logger.info(f"[{request_id}] Starting enhanced Playwright scraping (scrolling={'enabled' if enable_scrolling else 'disabled'})...")
     
-    async with async_playwright() as p:
-        logger.debug(f"[{request_id}] Launching browser...")
+    # Track this request
+    active_requests.add(request_id)
+    browser = None
+    
+    try:
+        # Check for shutdown
+        if shutdown_event.is_set():
+            logger.warning(f"[{request_id}] Rejecting request due to shutdown")
+            return None, {"status": "error", "error": "Service is shutting down"}
+        
+        # Wait for browser slot (will queue if necessary)
+        if not await resource_manager.acquire_browser_slot(timeout=60.0):
+            logger.error(f"[{request_id}] Timeout waiting for browser slot")
+            return None, {
+                "status": "error",
+                "error": "Browser launch timeout - server overloaded",
+                "message": "Waited too long for browser resources. Please try again."
+            }
+        
+        async with async_playwright() as p:
+            logger.debug(f"[{request_id}] Launching browser...")
         
         # Enhanced browser launch arguments for stealth
         browser = await p.chromium.launch(
@@ -328,10 +388,37 @@ async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5
                 "raw_error": str(e),
                 "partial_content": partial_content
             }
+        except Exception as e:
+            logger.error(f"[{request_id}] Unexpected error: {str(e)}")
+            return None, {
+                "status": "error",
+                "error": f"Scraping failed: {str(e)}",
+                "raw_error": str(e)
+            }
         finally:
-            await context.close()
-            await browser.close()
-            logger.debug(f"[{request_id}] Browser closed")
+            try:
+                await context.close()
+                await browser.close()
+                if browser in active_browsers:
+                    active_browsers.remove(browser)
+            except:
+                pass
+            finally:
+                resource_manager.release_browser_slot()
+                logger.debug(f"[{request_id}] Browser closed and slot released")
+    
+    except Exception as e:
+        logger.error(f"[{request_id}] Failed to launch browser: {str(e)}")
+        return None, {
+            "status": "error",
+            "error": "Failed to launch browser",
+            "raw_error": str(e)
+        }
+    finally:
+        # Clean up request tracking
+        if request_id in active_requests:
+            active_requests.remove(request_id)
+        logger.debug(f"[{request_id}] Request completed")
 
 @router.get("/scrape")
 async def scrape_url(url: str):
@@ -459,7 +546,30 @@ async def scrape_and_extract(request: ExtractRequest):
     start_time = time.time()
     request_id = f"{int(time.time() * 1000)}"  # Simple request ID based on timestamp
     
-    logger.info(f"[{request_id}] REQUEST: {request.url}")
+    # Accept request and add to queue
+    logger.info(f"[{request_id}] REQUEST: {request.url} - Queueing...")
+    
+    # Wait in queue (will timeout after 2 minutes if queue is full)
+    if not await resource_manager.acquire_request_slot(timeout=120.0):
+        logger.error(f"[{request_id}] Request timeout in queue")
+        return {
+            "status": "error",
+            "error": "Request timeout - server overloaded",
+            "message": "The server queue was full for too long. Please try again later.",
+            "resources": resource_manager.get_status()
+        }
+    
+    try:
+        logger.info(f"[{request_id}] Processing request: {request.url}")
+        
+    except Exception as e:
+        logger.error(f"[{request_id}] Error processing request: {str(e)}")
+        return {
+            "status": "error",
+            "error": f"Error processing request: {str(e)}",
+            "message": "An error occurred while processing your request.",
+            "resources": resource_manager.get_status()
+        }
     
     try:
         settings = get_settings()
@@ -647,4 +757,8 @@ async def scrape_and_extract(request: ExtractRequest):
             "error": str(e),
             "raw_error": traceback.format_exc(),
             "processing_time": f"{total_time:.2f}s"
-        } 
+        }
+    finally:
+        # Always release the request slot
+        resource_manager.release_request_slot()
+        logger.debug(f"[{request_id}] Request completed, slot released") 
