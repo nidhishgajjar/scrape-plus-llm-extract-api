@@ -161,8 +161,11 @@ class LLMProcessor:
                 logger.warning(f"[{self.request_id}] LLM returned very short response: {response_text}")
                 return {"error": "LLM response too short - possible context issues or incomplete generation"}, "short_response_error"
             
-            # Log truncated response for debugging
-            truncated_response = response_text[:300] + "..." if len(response_text) > 300 else response_text
+            # Log truncated response for debugging - show beginning and end
+            if len(response_text) > 300:
+                truncated_response = f"{response_text[:150]}...MIDDLE_TRUNCATED...{response_text[-150:]}"
+            else:
+                truncated_response = response_text
             logger.info(f"[{self.request_id}] LLM RESPONSE: {truncated_response}")
             
             # Free up memory after large operations
