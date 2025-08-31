@@ -274,8 +274,12 @@ async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5
             
             logger.info(f"[{request_id}] Page loaded successfully - Title: {page_title}")
             
-            # Wait for dynamic content
-            await page.wait_for_load_state("networkidle", timeout=5000)
+            # Wait for dynamic content (but don't fail if it times out)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=5000)
+                logger.debug(f"[{request_id}] Network idle state reached")
+            except PlaywrightTimeout:
+                logger.debug(f"[{request_id}] Network idle timeout - continuing anyway")
             
             # Apply delay if specified
             if delay_ms > 0:
