@@ -1,7 +1,6 @@
 import random
 from fastapi import APIRouter, HTTPException
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout, Browser
-from firecrawl import FirecrawlApp
 from app.services.scraper import scroll_to_bottom, save_markdown_to_file
 from app.services.markdown_converter import convert_html_to_markdown
 from app.services.llm_processor import LLMProcessor, ModelType
@@ -611,10 +610,9 @@ class ExtractRequest(BaseModel):
     extraction_prompt: str
     output_format: Dict[str, Any]
     model: ModelType = "gpt-4o-mini"
-    use_inhouse_scraping: bool = False
     enable_scrolling: Optional[bool] = None  # None means auto-decide based on delay
     scrolling_type: Literal["human", "bot"] = "bot"  # Type of scrolling
-    delay_page_load: int = 5000  # Delay in milliseconds for both scraping methods
+    delay_page_load: int = 5000  # Delay in milliseconds for page load
 
 @router.post("/scrape/llm-extract")
 async def scrape_and_extract(request: ExtractRequest):
@@ -638,71 +636,34 @@ async def scrape_and_extract(request: ExtractRequest):
     
     try:
         settings = get_settings()
-        # Debug mode check
         
-        if request.use_inhouse_scraping:
-            # Use enhanced in-house scraping with anti-detection measures
-            scrape_start = time.time()
-            
-            # Use the enhanced scraping function
-            html_content, error = await perform_enhanced_scraping(
-                request.url, 
-                request_id, 
-                delay_ms=request.delay_page_load,
-                enable_scrolling=request.enable_scrolling,
-                scrolling_type=request.scrolling_type
-            )
-            
-            if error:
-                return error
-            
-            # Converting HTML to Markdown
-            markdown_content = await convert_html_to_markdown(html_content)
-            
-            if markdown_content is None:
-                logger.error(f"[{request_id}] Failed to convert HTML to markdown")
-                raise HTTPException(status_code=500, detail="Failed to convert HTML to markdown")
-            
-            scrape_time = time.time() - scrape_start
-            
-            # Log markdown preview to help debug null extractions
-            markdown_preview = markdown_content[:300] + "..." if len(markdown_content) > 300 else markdown_content
-            logger.info(f"[{request_id}] SCRAPED: {len(markdown_content)} chars | Preview: {markdown_preview}")
-            
-        else:
-            # Use Firecrawl approach
-            # Starting Firecrawl scraping
-            scrape_start = time.time()
-            
-            try:
-                app = FirecrawlApp(api_key=os.getenv('FIRECRAWL_API_KEY'))
-                
-                # Add delay parameter to Firecrawl
-                firecrawl_params = {
-                    'formats': ['markdown'],
-                    'actions': [
-                        {"type": "wait", "milliseconds": request.delay_page_load}
-                    ]
-                }
-                
-                logger.info(f"[{request_id}] Using Firecrawl with delay: {request.delay_page_load}ms")
-                
-                response = app.scrape_url(
-                    url=request.url,
-                    params=firecrawl_params
-                )
-                markdown_content = response['markdown']
-                
-                scrape_time = time.time() - scrape_start
-                
-                # Log markdown preview to help debug null extractions
-                markdown_preview = markdown_content[:300] + "..." if len(markdown_content) > 300 else markdown_content
-                logger.info(f"[{request_id}] SCRAPED: {len(markdown_content)} chars | Preview: {markdown_preview}")
-                
-            except Exception as e:
-                logger.error(f"[{request_id}] Firecrawl scraping failed: {str(e)}")
-                logger.error(f"[{request_id}] Raw Firecrawl error: {traceback.format_exc()}")
-                raise HTTPException(status_code=500, detail=f"Firecrawl scraping failed: {str(e)}")
+        # Use enhanced in-house scraping with anti-detection measures
+        scrape_start = time.time()
+        
+        # Use the enhanced scraping function
+        html_content, error = await perform_enhanced_scraping(
+            request.url, 
+            request_id, 
+            delay_ms=request.delay_page_load,
+            enable_scrolling=request.enable_scrolling,
+            scrolling_type=request.scrolling_type
+        )
+        
+        if error:
+            return error
+        
+        # Converting HTML to Markdown
+        markdown_content = await convert_html_to_markdown(html_content)
+        
+        if markdown_content is None:
+            logger.error(f"[{request_id}] Failed to convert HTML to markdown")
+            raise HTTPException(status_code=500, detail="Failed to convert HTML to markdown")
+        
+        scrape_time = time.time() - scrape_start
+        
+        # Log markdown preview to help debug null extractions
+        markdown_preview = markdown_content[:300] + "..." if len(markdown_content) > 300 else markdown_content
+        logger.info(f"[{request_id}] SCRAPED: {len(markdown_content)} chars | Preview: {markdown_preview}")
         
         # save the markdown to a file
         file_path = "File saving disabled in production mode"
@@ -740,7 +701,7 @@ async def scrape_and_extract(request: ExtractRequest):
                     "error": extracted_data['error'],
                     "raw_error": extracted_data.get('raw_error', 'No raw error provided'),
                     "markdown_file": file_path,
-                    "scraping_method": "inhouse_playwright" if request.use_inhouse_scraping else "firecrawl",
+                    "scraping_method": "playwright",
                     "processing_time": llm_time,
                     "llm_error_type": extraction_file_path  # This contains the error type
                 }
@@ -755,7 +716,7 @@ async def scrape_and_extract(request: ExtractRequest):
                 "error": "LLM processing timed out after 150 seconds",
                 "raw_error": str(e),
                 "markdown_file": file_path,
-                "scraping_method": "inhouse_playwright" if request.use_inhouse_scraping else "firecrawl",
+                "scraping_method": "playwright",
                 "processing_time": llm_time
             }
         except Exception as e:
@@ -769,7 +730,7 @@ async def scrape_and_extract(request: ExtractRequest):
                 "error": f"LLM processing failed: {str(e)}",
                 "raw_error": traceback.format_exc(),
                 "markdown_file": file_path,
-                "scraping_method": "inhouse_playwright" if request.use_inhouse_scraping else "firecrawl",
+                "scraping_method": "playwright",
                 "processing_time": llm_time
             }
         
@@ -783,7 +744,7 @@ async def scrape_and_extract(request: ExtractRequest):
             "extraction_file": extraction_file_path,
             "markdown_file": file_path,
             "model_used": request.model,
-            "scraping_method": "inhouse_playwright" if request.use_inhouse_scraping else "firecrawl",
+            "scraping_method": "playwright",
             "debug_mode": settings.DEBUG_MODE,
             "processing_time": {
                 "total": f"{total_time:.2f}s",
