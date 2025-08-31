@@ -98,9 +98,9 @@ async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5
         
         async with async_playwright() as p:
             logger.debug(f"[{request_id}] Launching browser...")
-        
-        # Enhanced browser launch arguments for stealth
-        browser = await p.chromium.launch(
+            
+            # Enhanced browser launch arguments for stealth
+            browser = await p.chromium.launch(
             headless=True,  # Consider headless=False for really tough sites
             args=[
                 '--no-sandbox',
@@ -140,272 +140,273 @@ async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5
             ]
         )
 
-        # Create context with additional settings
-        context = await browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            screen={"width": 1920, "height": 1080},
-            device_scale_factor=1,
-            has_touch=False,
-            is_mobile=False,
-            java_script_enabled=True,
-            locale='en-US',
-            timezone_id='America/New_York',
-            geolocation=None,
-            permissions=[],
-            color_scheme='light',
-            reduced_motion='no-preference',
-        )
-        
-        page = await context.new_page()
-        
-        # Set realistic headers
-        await page.set_extra_http_headers({
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'User-Agent': ua.random,
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache',
-            'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-            'Sec-Ch-Ua-Mobile': '?0',
-            'Sec-Ch-Ua-Platform': '"Windows"',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Sec-Fetch-User': '?1',
-            'Upgrade-Insecure-Requests': '1',
-        })
-        
-        # Comprehensive anti-detection script
-        await page.add_init_script("""
-            // Remove webdriver
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined,
-            });
-            
-            // Mock permissions
-            const originalQuery = window.navigator.permissions.query;
-            window.navigator.permissions.query = (parameters) => (
-                parameters.name === 'notifications' ?
-                    Promise.resolve({ state: Notification.permission }) :
-                    originalQuery(parameters)
-            );
-            
-            // Mock plugins to look like real browser
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => {
-                    return [
-                        {
-                            0: {type: "application/x-google-chrome-pdf", suffixes: "pdf", description: "Portable Document Format"},
-                            description: "Portable Document Format",
-                            filename: "internal-pdf-viewer",
-                            length: 1,
-                            name: "Chrome PDF Plugin"
-                        },
-                        {
-                            0: {type: "application/x-nacl", suffixes: "", description: "Native Client Executable"},
-                            1: {type: "application/x-pnacl", suffixes: "", description: "Portable Native Client Executable"},
-                            description: "Native Client",
-                            filename: "internal-nacl-plugin",
-                            length: 2,
-                            name: "Native Client"
-                        }
-                    ];
-                },
-            });
-            
-            // Mock languages
-            Object.defineProperty(navigator, 'languages', {
-                get: () => ['en-US', 'en'],
-            });
-            
-            // Mock hardware concurrency
-            Object.defineProperty(navigator, 'hardwareConcurrency', {
-                get: () => 8,
-            });
-            
-            // Mock device memory
-            Object.defineProperty(navigator, 'deviceMemory', {
-                get: () => 8,
-            });
-            
-            // Mock WebGL vendor
-            const getParameter = WebGLRenderingContext.prototype.getParameter;
-            WebGLRenderingContext.prototype.getParameter = function(parameter) {
-                if (parameter === 37445) {
-                    return 'Intel Inc.';
-                }
-                if (parameter === 37446) {
-                    return 'Intel Iris OpenGL Engine';
-                }
-                return getParameter(parameter);
-            };
-            
-            // Mock battery API
-            if (typeof navigator.getBattery !== 'undefined') {
-                navigator.getBattery = () => Promise.resolve({
-                    charging: true,
-                    chargingTime: 0,
-                    dischargingTime: Infinity,
-                    level: 1,
-                });
-            }
-            
-            // Override chrome detection
-            window.chrome = {
-                runtime: {},
-                loadTimes: function() {},
-                csi: function() {},
-                app: {}
-            };
-            
-            // Mock connection API
-            Object.defineProperty(navigator, 'connection', {
-                get: () => ({
-                    effectiveType: '4g',
-                    rtt: 50,
-                    downlink: 10,
-                    saveData: false,
-                }),
-            });
-            
-            // Remove automation controlled flag
-            Object.defineProperty(navigator, 'automationControlled', {
-                get: () => undefined,
-            });
-            
-            // Mock platform
-            Object.defineProperty(navigator, 'platform', {
-                get: () => 'Win32',
-            });
-            
-            // Mock vendor
-            Object.defineProperty(navigator, 'vendor', {
-                get: () => 'Google Inc.',
-            });
-            
-            // Mock app version
-            Object.defineProperty(navigator, 'appVersion', {
-                get: () => '5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            });
-            
-            // Override toString methods to avoid detection
-            window.navigator.permissions.query.toString = () => 'function query() { [native code] }';
-            if (window.navigator.getBattery) {
-                window.navigator.getBattery.toString = () => 'function getBattery() { [native code] }';
-            }
-        """)
-
-        try:
-            # Navigate with extended timeout for Cloudflare challenges
-            logger.info(f"[{request_id}] Navigating to URL with 30s timeout...")
-            await page.goto(url, 
-                wait_until='domcontentloaded',  # or 'networkidle' for SPAs
-                timeout=45000  # 45 second timeout for slow sites/Cloudflare
+            # Create context with additional settings
+            context = await browser.new_context(
+                viewport={"width": 1920, "height": 1080},
+                screen={"width": 1920, "height": 1080},
+                device_scale_factor=1,
+                has_touch=False,
+                is_mobile=False,
+                java_script_enabled=True,
+                locale='en-US',
+                timezone_id='America/New_York',
+                geolocation=None,
+                permissions=[],
+                color_scheme='light',
+                reduced_motion='no-preference',
             )
+        
+            page = await context.new_page()
+        
+            # Set realistic headers
+            await page.set_extra_http_headers({
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'User-Agent': ua.random,
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+                'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                'Sec-Ch-Ua-Mobile': '?0',
+                'Sec-Ch-Ua-Platform': '"Windows"',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Upgrade-Insecure-Requests': '1',
+            })
+        
+            # Comprehensive anti-detection script
+            await page.add_init_script("""
+                // Remove webdriver
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined,
+                });
             
-            # Check for Cloudflare challenge
-            page_title = await page.title()
-            page_content = await page.content()
+                // Mock permissions
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                );
             
-            if any(indicator in page_title.lower() for indicator in ['just a moment', 'cloudflare', 'checking your browser', 'challenge']):
-                logger.warning(f"[{request_id}] Cloudflare challenge detected, waiting...")
+                // Mock plugins to look like real browser
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => {
+                        return [
+                            {
+                                0: {type: "application/x-google-chrome-pdf", suffixes: "pdf", description: "Portable Document Format"},
+                                description: "Portable Document Format",
+                                filename: "internal-pdf-viewer",
+                                length: 1,
+                                name: "Chrome PDF Plugin"
+                            },
+                            {
+                                0: {type: "application/x-nacl", suffixes: "", description: "Native Client Executable"},
+                                1: {type: "application/x-pnacl", suffixes: "", description: "Portable Native Client Executable"},
+                                description: "Native Client",
+                                filename: "internal-nacl-plugin",
+                                length: 2,
+                                name: "Native Client"
+                            }
+                        ];
+                    },
+                });
+            
+                // Mock languages
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en'],
+                });
+            
+                // Mock hardware concurrency
+                Object.defineProperty(navigator, 'hardwareConcurrency', {
+                    get: () => 8,
+                });
+            
+                // Mock device memory
+                Object.defineProperty(navigator, 'deviceMemory', {
+                    get: () => 8,
+                });
+            
+                // Mock WebGL vendor
+                const getParameter = WebGLRenderingContext.prototype.getParameter;
+                WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                    if (parameter === 37445) {
+                        return 'Intel Inc.';
+                    }
+                    if (parameter === 37446) {
+                        return 'Intel Iris OpenGL Engine';
+                    }
+                    return getParameter(parameter);
+                };
+            
+                // Mock battery API
+                if (typeof navigator.getBattery !== 'undefined') {
+                    navigator.getBattery = () => Promise.resolve({
+                        charging: true,
+                        chargingTime: 0,
+                        dischargingTime: Infinity,
+                        level: 1,
+                    });
+                }
+            
+                // Override chrome detection
+                window.chrome = {
+                    runtime: {},
+                    loadTimes: function() {},
+                    csi: function() {},
+                    app: {}
+                };
+            
+                // Mock connection API
+                Object.defineProperty(navigator, 'connection', {
+                    get: () => ({
+                        effectiveType: '4g',
+                        rtt: 50,
+                        downlink: 10,
+                        saveData: false,
+                    }),
+                });
+            
+                // Remove automation controlled flag
+                Object.defineProperty(navigator, 'automationControlled', {
+                    get: () => undefined,
+                });
+            
+                // Mock platform
+                Object.defineProperty(navigator, 'platform', {
+                    get: () => 'Win32',
+                });
+            
+                // Mock vendor
+                Object.defineProperty(navigator, 'vendor', {
+                    get: () => 'Google Inc.',
+                });
+            
+                // Mock app version
+                Object.defineProperty(navigator, 'appVersion', {
+                    get: () => '5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                });
+            
+                // Override toString methods to avoid detection
+                window.navigator.permissions.query.toString = () => 'function query() { [native code] }';
+                if (window.navigator.getBattery) {
+                    window.navigator.getBattery.toString = () => 'function getBattery() { [native code] }';
+                }
+            """)
+
+            try:
+                # Navigate with extended timeout for Cloudflare challenges
+                logger.info(f"[{request_id}] Navigating to URL with 30s timeout...")
+                await page.goto(url, 
+                    wait_until='domcontentloaded',  # or 'networkidle' for SPAs
+                    timeout=45000  # 45 second timeout for slow sites/Cloudflare
+                )
+            
+                # Check for Cloudflare challenge
+                page_title = await page.title()
+                page_content = await page.content()
+            
+                if any(indicator in page_title.lower() for indicator in ['just a moment', 'cloudflare', 'checking your browser', 'challenge']):
+                    logger.warning(f"[{request_id}] Cloudflare challenge detected, waiting...")
                 
-                # Wait for challenge to complete
+                    # Wait for challenge to complete
+                    try:
+                        # Wait for either navigation or specific element that indicates page loaded
+                        await page.wait_for_selector('body', state='visible', timeout=15000)
+                        await page.wait_for_load_state('networkidle', timeout=15000)
+                    
+                        # Additional wait for JavaScript challenges
+                        await page.wait_for_timeout(5000)
+                    
+                        # Re-check content
+                        page_content = await page.content()
+                        page_title = await page.title()
+                        logger.info(f"[{request_id}] Challenge appears to be resolved")
+                    
+                    except Exception as e:
+                        logger.warning(f"[{request_id}] Challenge wait failed: {str(e)}")
+            
+                # Check for other bot detection systems
+                if any(indicator in page_content.lower() for indicator in ['recaptcha', 'hcaptcha', 'robot', 'bot detected']):
+                    logger.warning(f"[{request_id}] Bot detection system detected on page")
+            
+                logger.info(f"[{request_id}] Page loaded successfully - Title: {page_title}")
+            
+                # Wait for dynamic content (but don't fail if it times out)
                 try:
-                    # Wait for either navigation or specific element that indicates page loaded
-                    await page.wait_for_selector('body', state='visible', timeout=15000)
-                    await page.wait_for_load_state('networkidle', timeout=15000)
-                    
-                    # Additional wait for JavaScript challenges
-                    await page.wait_for_timeout(5000)
-                    
-                    # Re-check content
-                    page_content = await page.content()
-                    page_title = await page.title()
-                    logger.info(f"[{request_id}] Challenge appears to be resolved")
-                    
-                except Exception as e:
-                    logger.warning(f"[{request_id}] Challenge wait failed: {str(e)}")
+                    await page.wait_for_load_state("networkidle", timeout=5000)
+                    logger.debug(f"[{request_id}] Network idle state reached")
+                except PlaywrightTimeout:
+                    logger.debug(f"[{request_id}] Network idle timeout - continuing anyway")
             
-            # Check for other bot detection systems
-            if any(indicator in page_content.lower() for indicator in ['recaptcha', 'hcaptcha', 'robot', 'bot detected']):
-                logger.warning(f"[{request_id}] Bot detection system detected on page")
+                # Apply delay if specified
+                if delay_ms > 0:
+                    logger.info(f"[{request_id}] Applying delay: {delay_ms}ms")
+                    await page.wait_for_timeout(delay_ms)
             
-            logger.info(f"[{request_id}] Page loaded successfully - Title: {page_title}")
+                # Optional scrolling to load dynamic content
+                if enable_scrolling:
+                    logger.debug(f"[{request_id}] Starting human-like page scrolling...")
+                    try:
+                        await asyncio.wait_for(
+                            human_like_scroll(page, max_scroll_time=15),  # Pass max scroll time to function
+                            timeout=20  # 20 second timeout for scrolling
+                        )
+                        logger.debug(f"[{request_id}] Scrolling completed")
+                    except asyncio.TimeoutError:
+                        logger.warning(f"[{request_id}] Scrolling timeout reached, continuing with partial scroll")
+                else:
+                    # Simple quick scroll to trigger lazy loading (minimal impact)
+                    logger.debug(f"[{request_id}] Skipping scrolling as per configuration")
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await page.wait_for_timeout(500)  # Brief wait for any lazy-loaded content
             
-            # Wait for dynamic content (but don't fail if it times out)
-            try:
-                await page.wait_for_load_state("networkidle", timeout=5000)
-                logger.debug(f"[{request_id}] Network idle state reached")
-            except PlaywrightTimeout:
-                logger.debug(f"[{request_id}] Network idle timeout - continuing anyway")
+                # Final wait for any lazy-loaded content
+                await page.wait_for_timeout(2000)
             
-            # Apply delay if specified
-            if delay_ms > 0:
-                logger.info(f"[{request_id}] Applying delay: {delay_ms}ms")
-                await page.wait_for_timeout(delay_ms)
+                logger.info(f"[{request_id}] Extracting page content...")
+                html_content = await page.content()
+                logger.info(f"[{request_id}] HTML content extracted (size: {len(html_content)} chars)")
             
-            # Optional scrolling to load dynamic content
-            if enable_scrolling:
-                logger.debug(f"[{request_id}] Starting human-like page scrolling...")
-                try:
-                    await asyncio.wait_for(
-                        human_like_scroll(page, max_scroll_time=15),  # Pass max scroll time to function
-                        timeout=20  # 20 second timeout for scrolling
-                    )
-                    logger.debug(f"[{request_id}] Scrolling completed")
-                except asyncio.TimeoutError:
-                    logger.warning(f"[{request_id}] Scrolling timeout reached, continuing with partial scroll")
-            else:
-                # Simple quick scroll to trigger lazy loading (minimal impact)
-                logger.debug(f"[{request_id}] Skipping scrolling as per configuration")
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await page.wait_for_timeout(500)  # Brief wait for any lazy-loaded content
+                return html_content, None
             
-            # Final wait for any lazy-loaded content
-            await page.wait_for_timeout(2000)
+            except PlaywrightTimeout as e:
+                logger.error(f"[{request_id}] Page loading timed out: {str(e)}")
             
-            logger.info(f"[{request_id}] Extracting page content...")
-            html_content = await page.content()
-            logger.info(f"[{request_id}] HTML content extracted (size: {len(html_content)} chars)")
-            
-            return html_content, None
-            
-        except PlaywrightTimeout as e:
-            logger.error(f"[{request_id}] Page loading timed out: {str(e)}")
-            
-            # Try to get partial content
-            partial_content = None
-            try:
-                partial_content = await page.content()
-            except:
-                pass
                 
-            return None, {
-                "status": "error",
-                "error": "Page loading timed out - possible bot protection",
-                "raw_error": str(e),
-                "partial_content": partial_content
-            }
-        except Exception as e:
-            logger.error(f"[{request_id}] Unexpected error: {str(e)}")
-            return None, {
-                "status": "error",
-                "error": f"Scraping failed: {str(e)}",
-                "raw_error": str(e)
-            }
-        finally:
-            try:
-                await context.close()
-                await browser.close()
-                if browser in active_browsers:
-                    active_browsers.remove(browser)
-            except:
-                pass
+                # Try to get partial content
+                partial_content = None
+                try:
+                    partial_content = await page.content()
+                except:
+                    pass
+                    
+                return None, {
+                    "status": "error",
+                    "error": "Page loading timed out - possible bot protection",
+                    "raw_error": str(e),
+                    "partial_content": partial_content
+                }
+            except Exception as e:
+                logger.error(f"[{request_id}] Unexpected error: {str(e)}")
+                return None, {
+                    "status": "error",
+                    "error": f"Scraping failed: {str(e)}",
+                    "raw_error": str(e)
+                }
             finally:
-                resource_manager.release_browser_slot()
-                logger.debug(f"[{request_id}] Browser closed and slot released")
+                try:
+                    await context.close()
+                    await browser.close()
+                    if browser in active_browsers:
+                        active_browsers.remove(browser)
+                except:
+                    pass
+                finally:
+                    resource_manager.release_browser_slot()
+                    logger.debug(f"[{request_id}] Browser closed and slot released")
     
     except Exception as e:
         logger.error(f"[{request_id}] Failed to launch browser: {str(e)}")
