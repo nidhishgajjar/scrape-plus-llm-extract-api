@@ -149,7 +149,7 @@ class LLMProcessor:
             # For together_ai provider via env, no need to override api_base/api_key here
 
             # Retry logic for transient errors (503, 429)
-            max_retries = 3
+            max_retries = 10
             retry_delay = 1
             response = None
             
@@ -322,7 +322,7 @@ class LLMProcessor:
             return error_data, "timeout_error"
             
         except json.JSONDecodeError as e:
-            # Handle JSON decoding error
+            # Handle JSON decoding error - trigger fallback for gpt-oss models
             logger.error(f"[{self.request_id}] LLM response was not valid JSON")
             logger.error(f"[{self.request_id}] JSON Error: {str(e)}")
             
@@ -333,14 +333,45 @@ class LLMProcessor:
                     logger.error(f"[{self.request_id}] Response preview (last 500 chars): ...{response_text[-500:]}")
                 else:
                     logger.error(f"[{self.request_id}] Full response that failed parsing: {response_text}")
+            
+            # Try Gemini fallback for gpt-oss models that return garbage
+            if self.model.startswith("gpt-oss") and not self.using_fallback:
+                logger.warning(f"[{self.request_id}] gpt-oss returned non-JSON, falling back to Gemini Flash")
                 
+                # Switch to Gemini Flash
+                self.model = "gemini-2.5-flash"
+                self.using_fallback = True
+                
+                # Reinitialize with Gemini
+                api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+                if api_key:
+                    os.environ["GEMINI_API_KEY"] = api_key
+                    self.litellm_model = f"gemini/{self.model}"
+                    
+                    # Retry with Gemini
+                    logger.info(f"[{self.request_id}] Retrying with Gemini Flash due to JSON parsing failure...")
+                    result = await self._extract_information_single(content, extraction_prompt, output_format)
+                    
+                    # Add fallback info to result if successful
+                    if isinstance(result[0], dict) and "error" not in result[0]:
+                        result[0]["_fallback_used"] = {
+                            "original_model": self.original_model,
+                            "fallback_model": "gemini-2.5-flash",
+                            "reason": "gpt-oss returned non-JSON response"
+                        }
+                    
+                    return result
+                else:
+                    logger.error(f"[{self.request_id}] Gemini API key not found for fallback")
+            
+            # For non-gpt-oss models or if fallback not available, return error
+            if 'response_text' in locals():
                 # Check for common issues
                 if "incomplete" in str(e).lower() or "truncated" in str(e).lower():
                     error_msg = "LLM response appears to be truncated/incomplete JSON"
                 else:
                     error_msg = f"LLM response was not valid JSON: {str(e)}"
             else:
-                logger.error(f"[{self.request_id}] No response text available")
                 error_msg = "No response text available from LLM"
             
             error_data = {"error": error_msg, "raw_error": str(e)}
