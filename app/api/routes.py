@@ -5,7 +5,7 @@ from firecrawl import FirecrawlApp
 from app.services.scraper import scroll_to_bottom, save_markdown_to_file
 from app.services.markdown_converter import convert_html_to_markdown
 from app.services.llm_processor import LLMProcessor, ModelType
-from typing import Dict, Any, Optional, Set
+from typing import Dict, Any, Optional, Set, Literal
 from pydantic import BaseModel
 import os
 import asyncio
@@ -70,12 +70,12 @@ async def health():
         "resources": status
     }
 
-async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5000, enable_scrolling: bool = False):
+async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5000, enable_scrolling: bool = False, scrolling_type: Literal["human", "bot"] = "bot"):
     """
     Reusable enhanced scraping function with anti-detection measures.
     Returns: (html_content, error_dict or None)
     """
-    logger.info(f"[{request_id}] Starting enhanced Playwright scraping (scrolling={'enabled' if enable_scrolling else 'disabled'})...")
+    logger.info(f"[{request_id}] Starting enhanced Playwright scraping (scrolling={'enabled (' + scrolling_type + ')' if enable_scrolling else 'disabled'})...")
     
     # Track this request
     active_requests.add(request_id)
@@ -348,15 +348,20 @@ async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5
             
                 # Optional scrolling to load dynamic content
                 if enable_scrolling:
-                    logger.debug(f"[{request_id}] Starting human-like page scrolling...")
-                    try:
-                        await asyncio.wait_for(
-                            human_like_scroll(page, max_scroll_time=15),  # Pass max scroll time to function
-                            timeout=20  # 20 second timeout for scrolling
-                        )
-                        logger.debug(f"[{request_id}] Scrolling completed")
-                    except asyncio.TimeoutError:
-                        logger.warning(f"[{request_id}] Scrolling timeout reached, continuing with partial scroll")
+                    if scrolling_type == "human":
+                        logger.debug(f"[{request_id}] Starting human-like page scrolling...")
+                        try:
+                            await asyncio.wait_for(
+                                human_like_scroll(page, max_scroll_time=15),  # Pass max scroll time to function
+                                timeout=20  # 20 second timeout for scrolling
+                            )
+                            logger.debug(f"[{request_id}] Human scrolling completed")
+                        except asyncio.TimeoutError:
+                            logger.warning(f"[{request_id}] Scrolling timeout reached, continuing with partial scroll")
+                    else:  # bot scrolling - fast and efficient
+                        logger.debug(f"[{request_id}] Starting bot scrolling (fast mode)...")
+                        await bot_scroll(page)
+                        logger.debug(f"[{request_id}] Bot scrolling completed")
                 else:
                     # Simple quick scroll to trigger lazy loading (minimal impact)
                     logger.debug(f"[{request_id}] Skipping scrolling as per configuration")
@@ -422,7 +427,12 @@ async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5
         logger.debug(f"[{request_id}] Request completed")
 
 @router.get("/scrape")
-async def scrape_url(url: str, enable_scrolling: bool = False, delay_ms: int = 5000):
+async def scrape_url(
+    url: str, 
+    enable_scrolling: bool = False, 
+    scrolling_type: Literal["human", "bot"] = "bot",
+    delay_ms: int = 5000
+):
     start_time = time.time()
     request_id = f"{int(time.time() * 1000)}"
     
@@ -437,7 +447,8 @@ async def scrape_url(url: str, enable_scrolling: bool = False, delay_ms: int = 5
             url, 
             request_id,
             delay_ms=delay_ms,
-            enable_scrolling=enable_scrolling
+            enable_scrolling=enable_scrolling,
+            scrolling_type=scrolling_type
         )
         
         if error:
@@ -494,6 +505,7 @@ async def scrape_url(url: str, enable_scrolling: bool = False, delay_ms: int = 5
 class ScrapeRequest(BaseModel):
     url: str
     enable_scrolling: bool = False
+    scrolling_type: Literal["human", "bot"] = "bot"
     delay_ms: int = 5000
 
 
@@ -503,8 +515,41 @@ async def scrape_url_post(request: ScrapeRequest):
     return await scrape_url(
         url=request.url,
         enable_scrolling=request.enable_scrolling,
+        scrolling_type=request.scrolling_type,
         delay_ms=request.delay_ms
     )
+
+
+async def bot_scroll(page):
+    """
+    Fast bot scrolling - scrolls to bottom in chunks quickly
+    """
+    logger.debug("Bot scrolling: Starting fast scroll")
+    
+    # Get page height
+    total_height = await page.evaluate('document.body.scrollHeight')
+    viewport_height = page.viewport_size['height']
+    current_position = 0
+    
+    # Scroll in large chunks quickly
+    while current_position < total_height:
+        # Scroll down by viewport height
+        await page.evaluate(f'window.scrollBy(0, {viewport_height})')
+        await page.wait_for_timeout(200)  # Small delay to let content load
+        
+        current_position = await page.evaluate('window.pageYOffset')
+        # Update total height in case new content loaded
+        new_height = await page.evaluate('document.body.scrollHeight')
+        
+        if new_height == total_height:
+            # No new content loaded, we're done
+            break
+        total_height = new_height
+    
+    # Final scroll to absolute bottom
+    await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+    await page.wait_for_timeout(500)  # Wait for any final lazy loading
+    logger.debug(f"Bot scrolling: Completed, scrolled to {total_height}px")
 
 
 async def human_like_scroll(page, max_scroll_time=15):
@@ -561,6 +606,7 @@ class ExtractRequest(BaseModel):
     model: ModelType = "gpt-4o-mini"
     use_inhouse_scraping: bool = False
     enable_scrolling: bool = False  # Default to no scrolling
+    scrolling_type: Literal["human", "bot"] = "bot"  # Type of scrolling
     delay_page_load: int = 5000  # Delay in milliseconds for both scraping methods
 
 @router.post("/scrape/llm-extract")
@@ -606,7 +652,8 @@ async def scrape_and_extract(request: ExtractRequest):
                 request.url, 
                 request_id, 
                 delay_ms=request.delay_page_load,
-                enable_scrolling=request.enable_scrolling
+                enable_scrolling=request.enable_scrolling,
+                scrolling_type=request.scrolling_type
             )
             
             if error:
