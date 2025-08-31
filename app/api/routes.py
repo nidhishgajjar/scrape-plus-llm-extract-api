@@ -88,12 +88,12 @@ async def perform_enhanced_scraping(url: str, request_id: str, delay_ms: int = 5
             return None, {"status": "error", "error": "Service is shutting down"}
         
         # Wait for browser slot (will queue if necessary)
-        if not await resource_manager.acquire_browser_slot(timeout=60.0):
-            logger.error(f"[{request_id}] Timeout waiting for browser slot")
+        if not await resource_manager.acquire_browser_slot(timeout=300.0):  # 5 minutes timeout
+            logger.error(f"[{request_id}] Timeout waiting for browser slot after 5 minutes")
             return None, {
                 "status": "error",
                 "error": "Browser launch timeout - server overloaded",
-                "message": "Waited too long for browser resources. Please try again."
+                "message": "Waited 5 minutes for browser resources. Please try again later."
             }
         
         async with async_playwright() as p:
